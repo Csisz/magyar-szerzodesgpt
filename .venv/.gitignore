@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Venv
+.venv/
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Pycache & misc
+*.log
+.env
