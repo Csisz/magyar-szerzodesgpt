@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: magyar_szerzodesgpt_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: contracts_admin
+      POSTGRES_PASSWORD: verysecretpassword
+      POSTGRES_DB: contracts_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
