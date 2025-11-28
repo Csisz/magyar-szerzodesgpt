@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -33,14 +34,22 @@ export function MainNav() {
   return (
     <nav className="w-full border-b border-slate-800 bg-slate-900/90 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-        {/* Bal oldal – “logó” / név */}
-        <Link href="/" className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-emerald-400">
+
+        {/* ▾ LOGÓ + felirat */}
+        <Link href="/" className="flex items-center gap-3">
+          <Image
+            src="/logo.png"
+            width={45}
+            height={39}
+            alt="Magyar SzerződésGPT logó"
+            className="rounded-md"
+          />
+          <span className="text-base font-semibold text-emerald-400 tracking-wide">
             Magyar SzerződésGPT
           </span>
         </Link>
 
-        {/* Jobb oldal – menü linkek */}
+        {/* ▾ Menü linkek */}
         <div className="flex items-center gap-2">
           <NavLink href="/" label="Főoldal" />
           <NavLink href="/contracts/generate" label="Szerződés generálása" />

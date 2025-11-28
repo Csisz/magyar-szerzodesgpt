@@ -16,7 +16,6 @@ export default function RootLayout({
     <html lang="hu">
       <body className="bg-slate-900 text-slate-50">
         <MainNav />
-        {/* Az oldalak saját layoutja – már mindegyik maga tartalmazza a <main>-t, paddinget, stb. */}
         {children}
       </body>
     </html>
