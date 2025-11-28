@@ -3,3 +3,8 @@ uvicorn[standard]
 psycopg2-binary
 SQLAlchemy
 python-dotenv
+openai>=1.0.0
+numpy
+python-docx
+pypdf
+python-multipart
