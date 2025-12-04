@@ -37,13 +37,14 @@ export function MainNav() {
 
         {/* ▾ LOGÓ + felirat */}
         <Link href="/" className="flex items-center gap-3">
-          <Image
+            <Image
             src="/logo.png"
-            width={45}
-            height={39}
             alt="Magyar SzerződésGPT logó"
-            className="rounded-md"
-          />
+            width={45}
+            height={45}
+            className="h-auto w-[45px]"
+            />
+
           <span className="text-base font-semibold text-emerald-400 tracking-wide">
             Magyar SzerződésGPT
           </span>
