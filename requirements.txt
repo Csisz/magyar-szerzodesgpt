@@ -8,3 +8,6 @@ numpy
 python-docx
 pypdf
 python-multipart
+jinja2
+beautifulsoup4
+reportlab

@@ -85,3 +85,25 @@ class ContractImproveRequest(BaseModel):
 class ContractImproveResponse(BaseModel):
     improved_text: str                      # javított / módosított szerződés teljes szövege
     summary_hu: Optional[str] = None        # rövid magyar összefoglaló arról, mit javított
+
+class ContractExportRequest(BaseModel):
+    """
+    Szerződés export kérés a backend felé.
+    - template_name: melyik sablont használjuk (pl. "megbizasi")
+    - format: "pdf" vagy "docx"
+    - template_vars: a szerződéssablonban használt placeholder-ek értékei
+    - a többi mező a layout/base.html-hez megy
+    """
+
+    template_name: str                      # pl. "megbizasi"
+    format: Literal["pdf", "docx"]
+
+    template_vars: dict                     # pl. {"megbizo_neve": "...", ...}
+
+    document_title: Optional[str] = None
+    document_date: Optional[str] = None
+    document_number: Optional[str] = None
+
+    brand_name: Optional[str] = None
+    brand_subtitle: Optional[str] = None
+    footer_text: Optional[str] = None

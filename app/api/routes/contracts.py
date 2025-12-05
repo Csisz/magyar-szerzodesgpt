@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ... import models, schemas
@@ -145,4 +145,43 @@ async def improve_contract_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Nem sikerült a szerződés javítása: {e}",
+        )
+
+@router.post("/export")
+async def export_contract(
+    req: schemas.ContractExportRequest,
+):
+    """
+    Szerződéssablon alapján PDF vagy DOCX fájlt generál.
+    A sablont a template_name + template_vars alapján rendereljük,
+    majd DOCX/PDF formátumba alakítjuk.
+    """
+    try:
+        layout_vars = {
+            "document_title": req.document_title or "Szerződés",
+            "document_date": req.document_date or "",
+            "document_number": req.document_number or "",
+            "brand_name": req.brand_name or "Magyar SzerződésGPT",
+            "brand_subtitle": req.brand_subtitle
+            or "AI-alapú szerződésgenerálás (általános tájékoztatás)",
+            "footer_text": req.footer_text
+            or "A dokumentum automatikusan generált, és nem minősül jogi tanácsadásnak.",
+        }
+
+        filename, content, mime_type = create_export_file(
+            template_name=req.template_name,
+            template_vars=req.template_vars or {},
+            layout_vars=layout_vars,
+            output_format=req.format,
+        )
+
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+        return Response(content=content, media_type=mime_type, headers=headers)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Nem sikerült a szerződés exportálása: {e}",
         )

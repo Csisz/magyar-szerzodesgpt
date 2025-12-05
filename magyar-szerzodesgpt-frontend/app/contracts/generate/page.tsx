@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, FormEvent, useEffect } from "react";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,14 @@ type GenerateResponse = {
   summary_en?: string | null;
 };
 
+const LOADING_MESSAGES = [
+  "Alapadatok elemzése…",
+  "Szerződés szerkezetének összeállítása…",
+  "Jogi szöveg generálása és finomhangolása…",
+  "Közérthető összefoglaló készítése…",
+  "Kockázati pontok azonosítása…",
+];
+
 export default function ContractGeneratePage() {
   const [type, setType] = useState("Megbízási szerződés");
   const [parties, setParties] = useState("");
@@ -23,14 +31,35 @@ export default function ContractGeneratePage() {
   const [specialTerms, setSpecialTerms] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  const [downloadFormat, setDownloadFormat] = useState<"pdf" | "docx" | null>(
+    null
+  );
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // váltakozó "mit csinál éppen" szövegek
+  useEffect(() => {
+    if (!loading) return;
+
+    setLoadingMessageIndex(0);
+
+    const timer = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [loading]);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+    setDownloadError(null);
 
     try {
       const res = await fetch("http://127.0.0.1:8000/contracts/generate", {
@@ -55,14 +84,80 @@ export default function ContractGeneratePage() {
       const data = (await res.json()) as GenerateResponse;
       setResult(data);
     } catch (err: any) {
-      setError(err.message ?? "Ismeretlen hiba");
+      console.error(err);
+      setError(err?.message ?? "Ismeretlen hiba történt a generálás során.");
     } finally {
       setLoading(false);
     }
   }
 
+  async function handleDownload(format: "pdf" | "docx") {
+    if (!result) return;
+
+    setDownloadFormat(format);
+    setDownloadError(null);
+
+    try {
+      const payload = {
+        template_name: "raw",
+        format,
+        template_vars: {
+          contract_text: result.contract_text,
+        },
+        document_title: type || "Szerződés",
+        document_date: new Date().toISOString().slice(0, 10),
+        document_number: "",
+        brand_name: "Magyar SzerződésGPT",
+        brand_subtitle:
+          "AI-alapú szerződésgenerálás (általános tájékoztatás, nem jogi tanácsadás)",
+        footer_text:
+          "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/contracts/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Export hiba: ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const ext = format === "pdf" ? "pdf" : "docx";
+      const safeTitle = (type || "szerzodes")
+        .toLowerCase()
+        .replace(/[^a-z0-9\-]+/gi, "_");
+
+      link.href = url;
+      link.download = `${safeTitle}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      setDownloadError(
+        err?.message || "Nem sikerült a szerződés exportálása."
+      );
+    } finally {
+      setDownloadFormat(null);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
+      {/* LOADING OVERLAY – a teljes képernyőn, amikor generál */}
+      <LoadingOverlay
+        visible={loading}
+        message={LOADING_MESSAGES[loadingMessageIndex]}
+      />
+
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         {/* Fejléc */}
         <header className="space-y-2">
@@ -95,44 +190,45 @@ export default function ContractGeneratePage() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="parties">Felek</Label>
+                  <Label htmlFor="parties">Felek rövid leírása</Label>
                   <Textarea
                     id="parties"
                     value={parties}
                     onChange={(e) => setParties(e.target.value)}
-                    placeholder="pl. Kiss János (megbízó) és Teszt Média Kft. (megbízott)"
+                    placeholder="pl. Megbízó: Teszt Kft. (cégadatokkal), Megbízott: Kiss János e.v. (cím, adószám)"
                     rows={3}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="subject">A szerződés tárgya</Label>
+                  <Label htmlFor="subject">Szerződés tárgya</Label>
                   <Textarea
                     id="subject"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    placeholder="pl. online marketing szolgáltatások teljes körű ellátása"
+                    placeholder="pl. online marketing tanácsadás, Facebook kampánykezelés, stb."
                     rows={3}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="payment">Díjazás / ellenérték</Label>
-                  <Input
+                  <Label htmlFor="payment">Díjazás és fizetés</Label>
+                  <Textarea
                     id="payment"
                     value={payment}
                     onChange={(e) => setPayment(e.target.value)}
-                    placeholder="pl. havi 200.000 Ft + áfa"
+                    placeholder="pl. havi 200 000 Ft + ÁFA, 8 napos fizetési határidő, banki átutalás"
+                    rows={3}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label htmlFor="duration">Időtartam</Label>
+                  <Label htmlFor="duration">Időtartam és felmondás</Label>
                   <Input
                     id="duration"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    placeholder="pl. határozatlan idő vagy 2025.12.31-ig"
+                    placeholder="pl. határozatlan idő, 30 napos felmondási idővel"
                   />
                 </div>
 
@@ -165,11 +261,11 @@ export default function ContractGeneratePage() {
           </Card>
 
           {/* JOBB OLDAL: eredmény */}
-          <Card className="bg-slate-800/90 border-slate-700 min-h-[320px]">
+          <Card className="bg-slate-800/90 border-slate-700">
             <CardHeader>
-              <CardTitle>Eredmény</CardTitle>
+              <CardTitle>Generált szerződés és összefoglaló</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               {!result && !loading && (
                 <p className="text-sm text-slate-400">
                   Itt fog megjelenni a generált szerződés és a laikus
@@ -177,6 +273,8 @@ export default function ContractGeneratePage() {
                 </p>
               )}
 
+              {/* ha szeretnéd, ezt a sima szöveget akár el is hagyhatod,
+                  mert úgyis ott az overlay */}
               {loading && (
                 <p className="text-sm text-slate-300">
                   ⏳ A szerződés generálása folyamatban...
@@ -191,6 +289,35 @@ export default function ContractGeneratePage() {
                     </h2>
                     <div className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm whitespace-pre-wrap">
                       {result.contract_text}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload("pdf")}
+                        disabled={downloadFormat !== null}
+                      >
+                        {downloadFormat === "pdf"
+                          ? "PDF letöltése..."
+                          : "PDF letöltése"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload("docx")}
+                        disabled={downloadFormat !== null}
+                      >
+                        {downloadFormat === "docx"
+                          ? "Word (DOCX) letöltése..."
+                          : "Word (DOCX) letöltése"}
+                      </Button>
+                      {downloadError && (
+                        <p className="text-xs text-red-400">
+                          ❌ {downloadError}
+                        </p>
+                      )}
                     </div>
                   </section>
 
@@ -209,5 +336,30 @@ export default function ContractGeneratePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+type LoadingOverlayProps = {
+  visible: boolean;
+  message: string;
+};
+
+function LoadingOverlay({ visible, message }: LoadingOverlayProps) {
+  if (!visible) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700">
+        <div className="h-10 w-10 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-sm font-medium text-slate-100">
+            A szerződés generálása folyamatban…
+          </p>
+          <p className="text-xs text-slate-400 min-h-[1.5rem] transition-opacity duration-300">
+            {message}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
