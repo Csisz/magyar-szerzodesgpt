@@ -10,9 +10,12 @@ from .document_renderer import render_contract_html
 
 import os
 
-from reportlab.pdfbase import pdfmetrics
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
 from reportlab.pdfbase.ttfonts import TTFont
-
+from reportlab.pdfbase import pdfmetrics
 
 def _html_to_plain_text(html: str) -> str:
     """
@@ -43,76 +46,48 @@ def generate_docx_from_html(html: str) -> bytes:
 
 def generate_pdf_from_html(html: str) -> bytes:
     """
-    MVP PDF generálás: sima szöveg A4 lapra tördelve.
-    Unicode (magyar ékezetes) szövegre is felkészítve DejaVuSans fonttal.
+    Unicode-képes PDF generálás Platypus-szal.
+    Kezeli az összes magyar ékezetet (ő / ű is).
     """
-    # HTML → plain text
     text = _html_to_plain_text(html)
 
     buffer = BytesIO()
 
-    # ---- Unicode font regisztrálása (DejaVuSans) ----
-    font_name = "DejaVuSans"
-    # export_service.py mappájához képest: ./fonts/DejaVuSans.ttf
+    # PDF dokumentum
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=20 * mm,
+        rightMargin=20 * mm,
+        topMargin=20 * mm,
+        bottomMargin=20 * mm,
+    )
+
+    # ---- Unicode TTF font regisztrálása ----
     font_path = os.path.join(os.path.dirname(__file__), "fonts", "DejaVuSans.ttf")
+    pdfmetrics.registerFont(TTFont("DejaVuSans", font_path))
 
-    # Font regisztrálása, ha még nincs
-    try:
-        pdfmetrics.getFont(font_name)
-    except KeyError:
-        pdfmetrics.registerFont(TTFont(font_name, font_path))
-    # -------------------------------------------------
+    styles = getSampleStyleSheet()
+    normal_style = ParagraphStyle(
+        "normal",
+        parent=styles["Normal"],
+        fontName="DejaVuSans",
+        fontSize=11,
+        leading=14,
+    )
 
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
+    story = []
 
-    # Használjuk az új fontot (méret tetszőleges, pl. 11 pt)
-    c.setFont(font_name, 11)
+    # Soronként beépítjük a platypusba
+    for line in text.split("\n"):
+        if line.strip():
+            story.append(Paragraph(line, normal_style))
+        else:
+            story.append(Spacer(1, 6))
 
-    x_margin = 40
-    y_margin = 40
-    max_width = width - 2 * x_margin
-    y = height - y_margin
+    # PDF összeállítása
+    doc.build(story)
 
-    def wrap_line(line: str) -> list[str]:
-        """
-        Nagyon egyszerű szövegtördelés: addig növeljük a stringet,
-        amíg a jelenlegi fonttal mért szélesség belefér a max_width-be.
-        """
-        if not line:
-            return [""]
-
-        words = line.split(" ")
-        lines: list[str] = []
-        current = ""
-
-        for word in words:
-            candidate = (current + " " + word).strip()
-            w = pdfmetrics.stringWidth(candidate, font_name, 11)
-            if w <= max_width:
-                current = candidate
-            else:
-                if current:
-                    lines.append(current)
-                current = word
-
-        if current:
-            lines.append(current)
-        return lines
-
-    # Soronként kiírás, egyszerű lapozással
-    for raw_line in text.splitlines():
-        for line in wrap_line(raw_line):
-            if y < y_margin:
-                c.showPage()
-                c.setFont(font_name, 11)
-                y = height - y_margin
-
-            c.drawString(x_margin, y, line)
-            y -= 14  # sortávolság
-
-    c.showPage()
-    c.save()
     pdf = buffer.getvalue()
     buffer.close()
     return pdf
