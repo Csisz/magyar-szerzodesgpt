@@ -8,6 +8,11 @@ from reportlab.pdfgen import canvas
 
 from .document_renderer import render_contract_html
 
+import os
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
 
 def _html_to_plain_text(html: str) -> str:
     """
@@ -39,40 +44,79 @@ def generate_docx_from_html(html: str) -> bytes:
 def generate_pdf_from_html(html: str) -> bytes:
     """
     MVP PDF generálás: sima szöveg A4 lapra tördelve.
-    Nem gyönyörű, de működő PDF-et ad.
+    Unicode (magyar ékezetes) szövegre is felkészítve DejaVuSans fonttal.
     """
+    # HTML → plain text
     text = _html_to_plain_text(html)
 
     buffer = BytesIO()
+
+    # ---- Unicode font regisztrálása (DejaVuSans) ----
+    font_name = "DejaVuSans"
+    # export_service.py mappájához képest: ./fonts/DejaVuSans.ttf
+    font_path = os.path.join(os.path.dirname(__file__), "fonts", "DejaVuSans.ttf")
+
+    # Font regisztrálása, ha még nincs
+    try:
+        pdfmetrics.getFont(font_name)
+    except KeyError:
+        pdfmetrics.registerFont(TTFont(font_name, font_path))
+    # -------------------------------------------------
+
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    x = 40
-    y = height - 40
-    line_height = 14
-    max_chars_per_line = 95
+    # Használjuk az új fontot (méret tetszőleges, pl. 11 pt)
+    c.setFont(font_name, 11)
 
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
+    x_margin = 40
+    y_margin = 40
+    max_width = width - 2 * x_margin
+    y = height - y_margin
+
+    def wrap_line(line: str) -> list[str]:
+        """
+        Nagyon egyszerű szövegtördelés: addig növeljük a stringet,
+        amíg a jelenlegi fonttal mért szélesség belefér a max_width-be.
+        """
         if not line:
-            y -= line_height
-            continue
+            return [""]
 
-        while line:
-            # egyszerű tördelés karakter szám alapján
-            chunk = line[:max_chars_per_line]
-            line = line[max_chars_per_line:]
+        words = line.split(" ")
+        lines: list[str] = []
+        current = ""
 
-            if y < 50:
+        for word in words:
+            candidate = (current + " " + word).strip()
+            w = pdfmetrics.stringWidth(candidate, font_name, 11)
+            if w <= max_width:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+
+        if current:
+            lines.append(current)
+        return lines
+
+    # Soronként kiírás, egyszerű lapozással
+    for raw_line in text.splitlines():
+        for line in wrap_line(raw_line):
+            if y < y_margin:
                 c.showPage()
-                y = height - 40
+                c.setFont(font_name, 11)
+                y = height - y_margin
 
-            c.drawString(x, y, chunk)
-            y -= line_height
+            c.drawString(x_margin, y, line)
+            y -= 14  # sortávolság
 
     c.showPage()
     c.save()
-    return buffer.getvalue()
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
+
 
 
 def create_export_file(

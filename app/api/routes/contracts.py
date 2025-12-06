@@ -17,6 +17,10 @@ from ...services.file_extract_service import (
     extract_text_from_txt,
 )
 
+# from app.services.export_service import create_export_file_from_template
+from app.services.export_service import create_export_file
+
+
 router = APIRouter(
     prefix="/contracts",
     tags=["Contracts"],
@@ -151,11 +155,6 @@ async def improve_contract_endpoint(
 async def export_contract(
     req: schemas.ContractExportRequest,
 ):
-    """
-    Szerződéssablon alapján PDF vagy DOCX fájlt generál.
-    A sablont a template_name + template_vars alapján rendereljük,
-    majd DOCX/PDF formátumba alakítjuk.
-    """
     try:
         layout_vars = {
             "document_title": req.document_title or "Szerződés",
@@ -163,7 +162,7 @@ async def export_contract(
             "document_number": req.document_number or "",
             "brand_name": req.brand_name or "Magyar SzerződésGPT",
             "brand_subtitle": req.brand_subtitle
-            or "AI-alapú szerződésgenerálás (általános tájékoztatás)",
+            or "AI-alapú szerződésgenerálás (általános tájékoztatás, nem jogi tanácsadás)",
             "footer_text": req.footer_text
             or "A dokumentum automatikusan generált, és nem minősül jogi tanácsadásnak.",
         }
@@ -172,7 +171,7 @@ async def export_contract(
             template_name=req.template_name,
             template_vars=req.template_vars or {},
             layout_vars=layout_vars,
-            output_format=req.format,
+            output_format=req.format,   # ⬅ NEM 'format', hanem 'output_format'
         )
 
         headers = {
@@ -185,3 +184,4 @@ async def export_contract(
             status_code=500,
             detail=f"Nem sikerült a szerződés exportálása: {e}",
         )
+

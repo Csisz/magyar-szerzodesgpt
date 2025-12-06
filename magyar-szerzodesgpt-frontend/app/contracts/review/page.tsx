@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect } from "react";
 
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+
+
+import { RotatingSquare } from "react-loader-spinner";
 
 type ReviewIssue = {
   clause_excerpt: string;
@@ -23,12 +26,23 @@ type ReviewResponse = {
   notes?: string | null;
 };
 
+// VÁLTOZÓ REVIEW-ÜZENETEK
+const LOADING_REVIEW_MESSAGES = [
+  "Szerződés szakaszainak beolvasása…",
+  "Kockázatos / egyoldalú klauzulák keresése…",
+  "Jogkövetkezmények és kötelezettségek elemzése…",
+  "Javasolt módosítások generálása…",
+  "Összefoglaló és kockázati szint összerakása…",
+];
+
 export default function ContractReviewPage() {
   const [contractText, setContractText] = useState("");
   const [contractType, setContractType] = useState("");
   const [partyRole, setPartyRole] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReviewResponse | null>(null);
 
@@ -39,6 +53,19 @@ export default function ContractReviewPage() {
     null
   );
   const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  // Animált, váltakozó review-üzenetek
+  useEffect(() => {
+    if (!loading) return;
+
+    setLoadingMessageIndex(0);
+
+    const timer = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % LOADING_REVIEW_MESSAGES.length);
+    }, 2000);
+
+    return () => clearInterval(timer);
+  }, [loading]);
 
   async function handleReview(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -89,13 +116,10 @@ export default function ContractReviewPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch(
-        "http://127.0.0.1:8000/contracts/extract-text",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const res = await fetch("http://127.0.0.1:8000/contracts/extract-text", {
+        method: "POST",
+        body: formData,
+      });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => null);
@@ -170,73 +194,76 @@ export default function ContractReviewPage() {
     return lines.join("\n");
   }
 
-  async function handleDownload(format: "pdf" | "docx") {
-    if (!result) return;
+async function handleDownload(format: "pdf" | "docx") {
+  if (!result) return;
 
-    setDownloadFormat(format);
-    setDownloadError(null);
+  setDownloadFormat(format);
+  setDownloadError(null);
 
-    try {
-      const reportText = buildReviewReportText(result, contractText);
+  try {
+    // 1) Szöveg összerakása a review eredményből + eredeti szerződésből
+    const reportText = buildReviewReportText(result, contractText);
 
-      const payload = {
-        template_name: "raw",
-        format,
-        template_vars: {
-          contract_text: reportText,
-        },
-        document_title:
-          (contractType || "Szerződés") + " - AI review riport",
-        document_date: new Date().toISOString().slice(0, 10),
-        document_number: "",
-        brand_name: "Magyar SzerződésGPT",
-        brand_subtitle:
-          "AI-alapú szerződésértékelés (általános tájékoztatás, nem jogi tanácsadás)",
-        footer_text:
-          "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
-      };
+    // 2) Payload az export API-nak
+    const payload = {
+      template_name: "raw",
+      format,
+      template_vars: {
+        contract_text: reportText,
+      },
+      document_title:
+        (contractType || "Szerződés") + " - AI review riport",
+      document_date: new Date().toISOString().slice(0, 10),
+      document_number: "",
+      brand_name: "Magyar SzerződésGPT",
+      brand_subtitle:
+        "AI-alapú szerződésértékelés (általános tájékoztatás, nem jogi tanácsadás)",
+      footer_text:
+        "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
+    };
 
-      const res = await fetch("http://127.0.0.1:8000/contracts/export", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+    const res = await fetch("http://127.0.0.1:8000/contracts/export", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        const msg =
-          errData?.detail ||
-          `Nem sikerült a review riport exportálása (HTTP ${res.status}).`;
-        throw new Error(msg);
-      }
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const ext = format === "pdf" ? "pdf" : "docx";
-      const safeTitle = (
-        (contractType || "szerzodes_review") + "_review"
-      )
-        .toLowerCase()
-        .replace(/[^a-z0-9\-]+/gi, "_");
-
-      link.href = url;
-      link.download = `${safeTitle}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error(err);
-      setDownloadError(
-        err?.message || "Nem sikerült a review riport exportálása."
-      );
-    } finally {
-      setDownloadFormat(null);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      const msg =
+        errData?.detail ||
+        `Nem sikerült a review riport exportálása (HTTP ${res.status}).`;
+      throw new Error(msg);
     }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const ext = format === "pdf" ? "pdf" : "docx";
+    const safeTitle = (
+      (contractType || "szerzodes_review") + "_review"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9\-]+/gi, "_");
+
+    link.href = url;
+    link.download = `${safeTitle}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err: any) {
+    console.error(err);
+    setDownloadError(
+      err?.message || "Nem sikerült a review riport exportálása."
+    );
+  } finally {
+    setDownloadFormat(null);
   }
+}
+
 
   function riskBadgeColor(risk: ReviewIssue["risk_level"]) {
     switch (risk) {
@@ -252,6 +279,14 @@ export default function ContractReviewPage() {
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
+      {/* TELJES KÉPERNYŐS LOADING OVERLAY REVIEWHEZ */}
+      <LoadingOverlay
+        visible={loading}
+        title="A szerződés elemzése folyamatban…"
+        message={LOADING_REVIEW_MESSAGES[loadingMessageIndex]}
+        />
+
+
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         <header className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">
@@ -498,3 +533,42 @@ export default function ContractReviewPage() {
     </main>
   );
 }
+
+type LoadingOverlayProps = {
+  visible: boolean;
+  message: string;
+};
+
+function LoadingOverlay({ visible, message, title }: { visible: boolean; message: string; title: string }) {
+  if (!visible) return null;
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700">
+
+        {/* MODERN ROTATING SQUARE LOADER */}
+        <RotatingSquare
+          height="90"
+          width="90"
+          color="#10b981"          // emerald-500
+          ariaLabel="rotating-square-loading"
+          visible={true}
+        />
+
+        {/* SZÖVEGEK (ez marad ugyanúgy!) */}
+        {/* <div className="flex flex-col items-center gap-1 text-center"> */}
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700 w-[360px] h-[140px]">
+        <p className="text-sm font-medium text-slate-100">
+            {title}
+        </p>
+        <p className="text-xs text-slate-400 min-h-[2rem] transition-opacity duration-300">
+            {message}
+        </p>
+        </div>
+
+
+      </div>
+    </div>
+  );
+}
+

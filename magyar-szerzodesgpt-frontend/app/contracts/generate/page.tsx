@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
+import { RotatingSquare } from "react-loader-spinner";
+
 type GenerateResponse = {
   contract_text: string;
   summary_hu: string;
@@ -153,10 +155,12 @@ export default function ContractGeneratePage() {
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
       {/* LOADING OVERLAY – a teljes képernyőn, amikor generál */}
-      <LoadingOverlay
+    <LoadingOverlay
         visible={loading}
+        title="A szerződés generálása folyamatban…"
         message={LOADING_MESSAGES[loadingMessageIndex]}
-      />
+    />
+
 
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         {/* Fejléc */}
@@ -344,22 +348,34 @@ type LoadingOverlayProps = {
   message: string;
 };
 
-function LoadingOverlay({ visible, message }: LoadingOverlayProps) {
+function LoadingOverlay({ visible, message, title }: { visible: boolean; message: string; title: string }) {
   if (!visible) return null;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700">
-        <div className="h-10 w-10 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-        <div className="flex flex-col items-center gap-1 text-center">
-          <p className="text-sm font-medium text-slate-100">
-            A szerződés generálása folyamatban…
-          </p>
-          <p className="text-xs text-slate-400 min-h-[1.5rem] transition-opacity duration-300">
+
+        {/* MODERN ROTATING SQUARE LOADER */}
+        <RotatingSquare
+          height="90"
+          width="90"
+          color="#10b981"          // emerald-500
+          ariaLabel="rotating-square-loading"
+          visible={true}
+        />
+
+        {/* SZÖVEGEK (ez marad ugyanúgy!) */}
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700 w-[360px] h-[140px]">            
+        <p className="text-sm font-medium text-slate-100">
+            {title}
+        </p>
+        <p className="text-xs text-slate-400 min-h-[2rem] transition-opacity duration-300">
             {message}
-          </p>
+        </p>
         </div>
+
       </div>
     </div>
   );
 }
+
