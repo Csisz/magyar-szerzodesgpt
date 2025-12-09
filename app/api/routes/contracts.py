@@ -156,22 +156,24 @@ async def export_contract(
     req: schemas.ContractExportRequest,
 ):
     try:
-        layout_vars = {
+        # Ezek MENNEK a meta-ba, mert create_export_file ezt várja
+        meta = {
             "document_title": req.document_title or "Szerződés",
             "document_date": req.document_date or "",
             "document_number": req.document_number or "",
             "brand_name": req.brand_name or "Magyar SzerződésGPT",
             "brand_subtitle": req.brand_subtitle
-            or "AI-alapú szerződésgenerálás (általános tájékoztatás, nem jogi tanácsadás)",
+                or "AI-alapú szerződésgenerálás (általános tájékoztatás, nem jogi tanácsadás)",
             "footer_text": req.footer_text
-            or "A dokumentum automatikusan generált, és nem minősül jogi tanácsadásnak.",
+                or "A dokumentum automatikusan generált, és nem minősül jogi tanácsadásnak.",
         }
 
+        # ⬅ A helyes hívás (NINCS layout_vars, NINCS output_format)
         filename, content, mime_type = create_export_file(
             template_name=req.template_name,
             template_vars=req.template_vars or {},
-            layout_vars=layout_vars,
-            output_format=req.format,   # ⬅ NEM 'format', hanem 'output_format'
+            format=req.format,     # ezt várja a függvény
+            meta=meta,             # layout_vars → meta
         )
 
         headers = {
@@ -184,4 +186,3 @@ async def export_contract(
             status_code=500,
             detail=f"Nem sikerült a szerződés exportálása: {e}",
         )
-

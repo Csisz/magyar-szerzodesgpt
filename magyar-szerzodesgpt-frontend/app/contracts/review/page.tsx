@@ -502,6 +502,7 @@ async function handleDownload(format: "pdf" | "docx") {
                         size="sm"
                         onClick={() => handleDownload("pdf")}
                         disabled={downloadFormat !== null}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold border-none"
                       >
                         {downloadFormat === "pdf"
                           ? "PDF letöltése..."
@@ -513,6 +514,7 @@ async function handleDownload(format: "pdf" | "docx") {
                         size="sm"
                         onClick={() => handleDownload("docx")}
                         disabled={downloadFormat !== null}
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold border-none"
                       >
                         {downloadFormat === "docx"
                           ? "Word (DOCX) letöltése..."
