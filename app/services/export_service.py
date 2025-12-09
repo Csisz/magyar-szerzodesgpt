@@ -1,59 +1,63 @@
+import os
 from io import BytesIO
 from typing import Dict, Tuple
 
 from bs4 import BeautifulSoup
-from docx import Document
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
 
-from .document_renderer import render_contract_html
-
-import os
-
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 
+import os
+print(">>> LOADED export_service.py FROM:", os.path.abspath(__file__))
+
+
+
+# ---------------------------------------------------------
+# Segédfüggvény: HTML → egyszerű szöveg
+# ---------------------------------------------------------
+
 def _html_to_plain_text(html: str) -> str:
     """
-    Egyszerű HTML -> sima szöveg átalakítás (MVP).
-    Később lehet okosabb, struktúráltabb megoldás.
+    HTML-ből egyszerű szöveg előállítása. A <br> és <p> tageket sortörésre alakítjuk.
     """
     soup = BeautifulSoup(html, "html.parser")
-    # sortörés blokkok között
-    return soup.get_text("\n")
+
+    # br → \n
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+
+    # p tagek között legyen sortörés
+    text_blocks = []
+    for p in soup.find_all("p"):
+        text_blocks.append(p.get_text(strip=True))
+    if text_blocks:
+        return "\n\n".join(text_blocks)
+
+    # fallback: teljes szöveg
+    return soup.get_text("\n", strip=True)
 
 
-def generate_docx_from_html(html: str) -> bytes:
-    """
-    Nagyon egyszerű: sima szöveget tesz a DOCX-be.
-    (MVP: formázás nélkül, csak tartalom)
-    """
-    text = _html_to_plain_text(html)
-    doc = Document()
-
-    for line in text.splitlines():
-        if line.strip():
-            doc.add_paragraph(line.strip())
-
-    buffer = BytesIO()
-    doc.save(buffer)
-    return buffer.getvalue()
-
+# ---------------------------------------------------------
+# PDF generálása Unicode támogatással (ő/ű OK)
+# ---------------------------------------------------------
 
 def generate_pdf_from_html(html: str) -> bytes:
     """
-    Unicode-képes PDF generálás Platypus-szal.
-    Kezeli az összes magyar ékezetet (ő / ű is).
+    Unicode-képes PDF generálás ReportLab + Platypus segítségével.
+    Minden magyar ékezet (ő / ű) támogatott.
     """
-    text = _html_to_plain_text(html)
 
+    text = _html_to_plain_text(html)
     buffer = BytesIO()
 
-    # PDF dokumentum
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -63,13 +67,13 @@ def generate_pdf_from_html(html: str) -> bytes:
         bottomMargin=20 * mm,
     )
 
-    # ---- Unicode TTF font regisztrálása ----
+    # DejaVuSans.ttf → az egyetlen 100%-osan Unicode-képes font ReportLabhoz
     font_path = os.path.join(os.path.dirname(__file__), "fonts", "DejaVuSans.ttf")
     pdfmetrics.registerFont(TTFont("DejaVuSans", font_path))
 
     styles = getSampleStyleSheet()
-    normal_style = ParagraphStyle(
-        "normal",
+    style = ParagraphStyle(
+        "Body",
         parent=styles["Normal"],
         fontName="DejaVuSans",
         fontSize=11,
@@ -78,49 +82,72 @@ def generate_pdf_from_html(html: str) -> bytes:
 
     story = []
 
-    # Soronként beépítjük a platypusba
     for line in text.split("\n"):
         if line.strip():
-            story.append(Paragraph(line, normal_style))
+            story.append(Paragraph(line, style))
         else:
             story.append(Spacer(1, 6))
 
-    # PDF összeállítása
     doc.build(story)
 
-    pdf = buffer.getvalue()
+    pdf_data = buffer.getvalue()
     buffer.close()
-    return pdf
+
+    return pdf_data
 
 
+# ---------------------------------------------------------
+# DOCX export (ha szükséges)
+# ---------------------------------------------------------
 
+from docx import Document
+
+def generate_docx_from_html(html: str) -> bytes:
+    """
+    Nagyon egyszerű DOCX generálás HTML-ből.
+    (Nincs styling, de Unicode kompatibilis.)
+    """
+
+    text = _html_to_plain_text(html)
+    document = Document()
+
+    for line in text.split("\n"):
+        document.add_paragraph(line)
+
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+# ---------------------------------------------------------
+# Export gyártó főfüggvény
+# ---------------------------------------------------------
 
 def create_export_file(
     template_name: str,
     template_vars: Dict,
-    layout_vars: Dict,
-    output_format: str,
+    format: str,
+    meta: Dict,
 ) -> Tuple[str, bytes, str]:
     """
-    Visszaadja: (fájlnév, bináris tartalom, MIME type)
+    A végső exportot előállító függvény.
+    Visszaadja:
+        - a fájl nevét
+        - a tartalmat bytes formában
+        - a MIME típust
     """
 
-    html = render_contract_html(template_name, template_vars, layout_vars)
+    html = template_vars.get("contract_text", "")
 
-    base_title = layout_vars.get("document_title", "szerzodes").replace(" ", "_")
+    if format == "pdf":
+        content = generate_pdf_from_html(html)
+        return "contract.pdf", content, "application/pdf"
 
-    if output_format == "docx":
+    elif format == "docx":
         content = generate_docx_from_html(html)
-        filename = f"{base_title}.docx"
-        mime_type = (
+        return "contract.docx", content, (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        return filename, content, mime_type
 
-    if output_format == "pdf":
-        content = generate_pdf_from_html(html)
-        filename = f"{base_title}.pdf"
-        mime_type = "application/pdf"
-        return filename, content, mime_type
-
-    raise ValueError(f"Nem támogatott export formátum: {output_format}")
+    else:
+        raise ValueError(f"Ismeretlen export formátum: {format}")

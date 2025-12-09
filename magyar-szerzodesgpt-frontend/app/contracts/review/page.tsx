@@ -201,32 +201,31 @@ async function handleDownload(format: "pdf" | "docx") {
   setDownloadError(null);
 
   try {
-    // 1) Szöveg összerakása a review eredményből + eredeti szerződésből
+    // 1) Review riport szöveg elkészítése
     const reportText = buildReviewReportText(result, contractText);
 
-    // 2) Payload az export API-nak
+    // 2) Payload — csak azok, amelyeket a backend create_export_file() fogad
     const payload = {
       template_name: "raw",
       format,
       template_vars: {
         contract_text: reportText,
       },
-      document_title:
-        (contractType || "Szerződés") + " - AI review riport",
-      document_date: new Date().toISOString().slice(0, 10),
-      document_number: "",
-      brand_name: "Magyar SzerződésGPT",
-      brand_subtitle:
-        "AI-alapú szerződésértékelés (általános tájékoztatás, nem jogi tanácsadás)",
-      footer_text:
-        "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
+      meta: {
+        document_title: `${contractType || "Szerződés"} - AI review riport`,
+        document_date: new Date().toISOString().slice(0, 10),
+        document_number: "",
+        brand_name: "Magyar SzerződésGPT",
+        brand_subtitle:
+          "AI-alapú szerződésértékelés (általános tájékoztatás, nem jogi tanácsadás)",
+        footer_text:
+          "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
+      },
     };
 
     const res = await fetch("http://127.0.0.1:8000/contracts/export", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
@@ -242,6 +241,7 @@ async function handleDownload(format: "pdf" | "docx") {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     const ext = format === "pdf" ? "pdf" : "docx";
+
     const safeTitle = (
       (contractType || "szerzodes_review") + "_review"
     )
@@ -263,6 +263,7 @@ async function handleDownload(format: "pdf" | "docx") {
     setDownloadFormat(null);
   }
 }
+
 
 
   function riskBadgeColor(risk: ReviewIssue["risk_level"]) {
@@ -536,10 +537,12 @@ async function handleDownload(format: "pdf" | "docx") {
 
 type LoadingOverlayProps = {
   visible: boolean;
+  title: string;
   message: string;
 };
 
-function LoadingOverlay({ visible, message, title }: { visible: boolean; message: string; title: string }) {
+function LoadingOverlay({ visible, title, message }: LoadingOverlayProps) {
+
   if (!visible) return null;
 
   return (

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 
 import { RotatingSquare } from "react-loader-spinner";
 
+
 type GenerateResponse = {
   contract_text: string;
   summary_hu: string;
@@ -23,6 +24,7 @@ const LOADING_MESSAGES = [
   "Közérthető összefoglaló készítése…",
   "Kockázati pontok azonosítása…",
 ];
+
 
 export default function ContractGeneratePage() {
   const [type, setType] = useState("Megbízási szerződés");
@@ -93,64 +95,84 @@ export default function ContractGeneratePage() {
     }
   }
 
-  async function handleDownload(format: "pdf" | "docx") {
-    if (!result) return;
+async function handleDownload(format: "pdf" | "docx") {
+  if (!result) return;
 
-    setDownloadFormat(format);
-    setDownloadError(null);
+  setDownloadFormat(format);
+  setDownloadError(null);
 
-    try {
-      const payload = {
-        template_name: "raw",
-        format,
-        template_vars: {
-          contract_text: result.contract_text,
-        },
-        document_title: type || "Szerződés",
+  try {
+    
+    // Exportálandó szöveg – itt NEM review riportot csinálunk,
+    // hanem a generált szerződés + összefoglaló kerül bele.
+    const exportText = [
+      "GENERÁLT SZERZŐDÉS",
+      "",
+      result.contract_text,
+      "",
+      "ÖSSZEFOGLALÓ (AI által generált, közérthető magyarázat)",
+      "",
+      result.summary_hu || "",
+    ].join("\n");
+
+    const payload = {
+      template_name: "raw",
+      format,
+      template_vars: {
+        contract_text: exportText,
+      },
+      meta: {
+        document_title: `${type || "Szerződés"} - AI generált szerződés`,
         document_date: new Date().toISOString().slice(0, 10),
         document_number: "",
         brand_name: "Magyar SzerződésGPT",
-        brand_subtitle:
-          "AI-alapú szerződésgenerálás (általános tájékoztatás, nem jogi tanácsadás)",
+        brand_subtitle: "AI-alapú szerződésgenerálás (általános tájékoztatás)",
         footer_text:
           "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
-      };
+      },
+    };
 
-      const res = await fetch("http://127.0.0.1:8000/contracts/export", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+    const res = await fetch("http://127.0.0.1:8000/contracts/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-      if (!res.ok) {
-        throw new Error(`Export hiba: ${res.status}`);
-      }
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const ext = format === "pdf" ? "pdf" : "docx";
-      const safeTitle = (type || "szerzodes")
-        .toLowerCase()
-        .replace(/[^a-z0-9\-]+/gi, "_");
-
-      link.href = url;
-      link.download = `${safeTitle}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error(err);
-      setDownloadError(
-        err?.message || "Nem sikerült a szerződés exportálása."
-      );
-    } finally {
-      setDownloadFormat(null);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => null);
+      const msg =
+        errData?.detail ||
+        `Nem sikerült az export (HTTP ${res.status}).`;
+      throw new Error(msg);
     }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const ext = format === "pdf" ? "pdf" : "docx";
+
+    const safeTitle = (
+      (type || "szerzodes") + "_generalas"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9\-]+/gi, "_");
+
+    link.href = url;
+    link.download = `${safeTitle}.${ext}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err: any) {
+    console.error(err);
+    setDownloadError(
+      err?.message || "Nem sikerült a dokumentum letöltése."
+    );
+  } finally {
+    setDownloadFormat(null);
   }
+}
+
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
