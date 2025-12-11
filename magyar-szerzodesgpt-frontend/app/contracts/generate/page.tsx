@@ -7,9 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 import { RotatingSquare } from "react-loader-spinner";
-
 
 type GenerateResponse = {
   contract_text: string;
@@ -24,7 +29,6 @@ const LOADING_MESSAGES = [
   "Közérthető összefoglaló készítése…",
   "Kockázati pontok azonosítása…",
 ];
-
 
 export default function ContractGeneratePage() {
   const [type, setType] = useState("Megbízási szerződés");
@@ -45,14 +49,20 @@ export default function ContractGeneratePage() {
   );
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
-  // váltakozó "mit csinál éppen" szövegek
+  // Modal szerkesztő állapot
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorText, setEditorText] = useState("");
+
+  // Animált, váltakozó töltés-üzenetek
   useEffect(() => {
     if (!loading) return;
 
     setLoadingMessageIndex(0);
 
     const timer = setInterval(() => {
-      setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+      setLoadingMessageIndex(
+        (prev) => (prev + 1) % LOADING_MESSAGES.length
+      );
     }, 2000);
 
     return () => clearInterval(timer);
@@ -82,107 +92,123 @@ export default function ContractGeneratePage() {
       });
 
       if (!res.ok) {
-        throw new Error(`Hiba a backend hívás közben: ${res.status}`);
+        const errData = await res.json().catch(() => null);
+        const msg =
+          errData?.detail ||
+          `Hiba a backend hívás közben: HTTP ${res.status}`;
+        throw new Error(msg);
       }
 
       const data = (await res.json()) as GenerateResponse;
       setResult(data);
+      setDownloadError(null);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message ?? "Ismeretlen hiba történt a generálás során.");
+      setError(
+        err?.message ||
+          "Ismeretlen hiba történt a szerződés generálása során."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-async function handleDownload(format: "pdf" | "docx") {
-  if (!result) return;
-
-  setDownloadFormat(format);
-  setDownloadError(null);
-
-  try {
-    
-    // Exportálandó szöveg – itt NEM review riportot csinálunk,
-    // hanem a generált szerződés + összefoglaló kerül bele.
-    const exportText = [
-      "GENERÁLT SZERZŐDÉS",
-      "",
-      result.contract_text,
-      "",
-      "ÖSSZEFOGLALÓ (AI által generált, közérthető magyarázat)",
-      "",
-      result.summary_hu || "",
-    ].join("\n");
-
-    const payload = {
-      template_name: "raw",
-      format,
-      template_vars: {
-        contract_text: exportText,
-      },
-      meta: {
-        document_title: `${type || "Szerződés"} - AI generált szerződés`,
-        document_date: new Date().toISOString().slice(0, 10),
-        document_number: "",
-        brand_name: "Magyar SzerződésGPT",
-        brand_subtitle: "AI-alapú szerződésgenerálás (általános tájékoztatás)",
-        footer_text:
-          "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
-      },
-    };
-
-    const res = await fetch("http://127.0.0.1:8000/contracts/export", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => null);
-      const msg =
-        errData?.detail ||
-        `Nem sikerült az export (HTTP ${res.status}).`;
-      throw new Error(msg);
-    }
-
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const ext = format === "pdf" ? "pdf" : "docx";
-
-    const safeTitle = (
-      (type || "szerzodes") + "_generalas"
-    )
-      .toLowerCase()
-      .replace(/[^a-z0-9\-]+/gi, "_");
-
-    link.href = url;
-    link.download = `${safeTitle}.${ext}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err: any) {
-    console.error(err);
-    setDownloadError(
-      err?.message || "Nem sikerült a dokumentum letöltése."
-    );
-  } finally {
-    setDownloadFormat(null);
+  // Ceruza ikon → modal nyitás
+  function openEditor() {
+    if (!result) return;
+    setEditorText(result.contract_text);
+    setEditorOpen(true);
   }
-}
 
+  // Letöltés – ha textOverride meg van adva (modal), azt használja
+  async function handleDownload(
+    format: "pdf" | "docx",
+    textOverride?: string
+  ) {
+    if (!result) return;
+
+    setDownloadFormat(format);
+    setDownloadError(null);
+
+    try {
+      // Exportálandó szöveg: ha a modálból jön, akkor az ott szerkesztett verzió
+      const contractTextForExport = textOverride ?? result.contract_text;
+
+      const exportText = [
+        "GENERÁLT SZERZŐDÉS",
+        "",
+        contractTextForExport,
+        "",
+        "ÖSSZEFOGLALÓ (AI által generált, közérthető magyarázat)",
+        "",
+        result.summary_hu || "",
+      ].join("\n");
+
+      const payload = {
+        template_name: "raw",
+        format,
+        template_vars: {
+          contract_text: exportText,
+        },
+        meta: {
+          document_title: `${type || "Szerződés"} - AI generált szerződés`,
+          document_date: new Date().toISOString().slice(0, 10),
+          document_number: "",
+          brand_name: "Magyar SzerződésGPT",
+          brand_subtitle:
+            "AI-alapú szerződésgenerálás (általános tájékoztatás)",
+          footer_text:
+            "Ez a dokumentum automatikusan generált, általános tájékoztatásnak minősül, nem helyettesíti a jogi tanácsadást.",
+        },
+      };
+
+      const res = await fetch("http://127.0.0.1:8000/contracts/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        const msg =
+          errData?.detail ||
+          `Nem sikerült az export (HTTP ${res.status}).`;
+        throw new Error(msg);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const ext = format === "pdf" ? "pdf" : "docx";
+
+      const safeTitle = ((type || "szerzodes") + "_generalas")
+        .toLowerCase()
+        .replace(/[^a-z0-9\-]+/gi, "_");
+
+      link.href = url;
+      link.download = `${safeTitle}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error(err);
+      setDownloadError(
+        err?.message || "Nem sikerült a dokumentum letöltése."
+      );
+    } finally {
+      setDownloadFormat(null);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
-      {/* LOADING OVERLAY – a teljes képernyőn, amikor generál */}
-    <LoadingOverlay
+      {/* Teljes képernyős loading overlay */}
+      <LoadingOverlay
         visible={loading}
         title="A szerződés generálása folyamatban…"
         message={LOADING_MESSAGES[loadingMessageIndex]}
-    />
-
+      />
 
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         {/* Fejléc */}
@@ -264,23 +290,25 @@ async function handleDownload(format: "pdf" | "docx") {
                     id="specialTerms"
                     value={specialTerms}
                     onChange={(e) => setSpecialTerms(e.target.value)}
-                    placeholder="pl. titoktartás, versenytilalom, szellemi tulajdon, kötbér"
-                    rows={4}
+                    placeholder="pl. titoktartás, versenytilalom, szellemi alkotások sorsa, kötbér, stb."
+                    rows={3}
                   />
                 </div>
 
                 {error && (
                   <p className="text-sm text-red-400">
-                    ❌ Hiba történt: {error}
+                    ❌ {error}
                   </p>
                 )}
 
                 <Button
                   type="submit"
-                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                  className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3"
                   disabled={loading}
                 >
-                  {loading ? "Generálás folyamatban..." : "Szerződés generálása"}
+                  {loading
+                    ? "Generálás folyamatban..."
+                    : "Szerződés generálása"}
                 </Button>
               </form>
             </CardContent>
@@ -299,8 +327,6 @@ async function handleDownload(format: "pdf" | "docx") {
                 </p>
               )}
 
-              {/* ha szeretnéd, ezt a sima szöveget akár el is hagyhatod,
-                  mert úgyis ott az overlay */}
               {loading && (
                 <p className="text-sm text-slate-300">
                   ⏳ A szerződés generálása folyamatban...
@@ -313,8 +339,17 @@ async function handleDownload(format: "pdf" | "docx") {
                     <h2 className="font-semibold text-lg">
                       Szerződés szövege
                     </h2>
-                    <div className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm whitespace-pre-wrap">
-                      {result.contract_text}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={openEditor}
+                        className="absolute top-2 right-2 rounded-full bg-slate-800/80 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700 hover:text-white transition"
+                      >
+                        ✏️ <span className="sr-only">Szerződés szerkesztése</span>
+                      </button>
+                      <div className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm whitespace-pre-wrap">
+                        {result.contract_text}
+                      </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button
@@ -363,6 +398,62 @@ async function handleDownload(format: "pdf" | "docx") {
           </Card>
         </div>
       </div>
+
+      {/* Szerkesztő modal – csak akkor, ha van eredmény */}
+      {result && (
+        <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+          <DialogContent className="max-w-4xl bg-slate-900 border border-slate-700 text-slate-50">
+            <DialogHeader>
+              <DialogTitle>Generált szerződés szerkesztése</DialogTitle>
+            </DialogHeader>
+            <div className="mt-4 space-y-4">
+              <Textarea
+                value={editorText}
+                onChange={(e) => setEditorText(e.target.value)}
+                rows={16}
+                className="w-full bg-slate-950/80 border border-slate-700 rounded-md text-sm text-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => handleDownload("pdf", editorText)}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                    disabled={downloadFormat !== null}
+                  >
+                    {downloadFormat === "pdf"
+                      ? "PDF letöltése..."
+                      : "PDF letöltése"}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleDownload("docx", editorText)}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                    disabled={downloadFormat !== null}
+                  >
+                    {downloadFormat === "docx"
+                      ? "Word (DOCX) letöltése..."
+                      : "Word (DOCX) letöltése"}
+                  </Button>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-600 text-slate-100 hover:bg-slate-700"
+                  onClick={() => setEditorOpen(false)}
+                >
+                  Bezárás
+                </Button>
+              </div>
+              {downloadError && (
+                <p className="text-xs text-red-400">
+                  ❌ {downloadError}
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </main>
   );
 }
@@ -370,36 +461,35 @@ async function handleDownload(format: "pdf" | "docx") {
 type LoadingOverlayProps = {
   visible: boolean;
   message: string;
+  title: string;
 };
 
-function LoadingOverlay({ visible, message, title }: { visible: boolean; message: string; title: string }) {
+function LoadingOverlay({
+  visible,
+  message,
+  title,
+}: LoadingOverlayProps) {
   if (!visible) return null;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700">
-
-        {/* MODERN ROTATING SQUARE LOADER */}
         <RotatingSquare
-          height="90"
-          width="90"
-          color="#10b981"          // emerald-500
-          ariaLabel="rotating-square-loading"
+          height="60"
+          width="60"
+          ariaLabel="square-loading"
+          strokeWidth="4"
           visible={true}
         />
-
-        {/* SZÖVEGEK (ez marad ugyanúgy!) */}
-        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl bg-slate-900 px-8 py-6 shadow-xl border border-slate-700 w-[360px] h-[140px]">            
-        <p className="text-sm font-medium text-slate-100">
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-slate-100">
             {title}
-        </p>
-        <p className="text-xs text-slate-400 min-h-[2rem] transition-opacity duration-300">
+          </p>
+          <p className="text-xs text-slate-400 min-h-[2rem] transition-opacity duration-300">
             {message}
-        </p>
+          </p>
         </div>
-
       </div>
     </div>
   );
 }
-
