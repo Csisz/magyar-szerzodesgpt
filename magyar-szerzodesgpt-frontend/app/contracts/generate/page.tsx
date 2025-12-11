@@ -16,10 +16,21 @@ import {
 
 import { RotatingSquare } from "react-loader-spinner";
 
+import dynamic from "next/dynamic";
+
+import { Edit } from "lucide-react";
+
+const ContractEditor = dynamic(
+  () => import("@/components/ContractEditor"),
+  { ssr: false }
+);
+
+
 type GenerateResponse = {
   contract_text: string;
   summary_hu: string;
   summary_en?: string | null;
+  contract_html?: string;
 };
 
 const LOADING_MESSAGES = [
@@ -113,12 +124,30 @@ export default function ContractGeneratePage() {
     }
   }
 
-  // Ceruza ikon → modal nyitás
+  // Ceruza ikon -> modal nyitás
   function openEditor() {
     if (!result) return;
-    setEditorText(result.contract_text);
+
+    // Ha már volt szerkesztett HTML, azt használjuk tovább
+    if (editorText) {
+      setEditorOpen(true);
+      return;
+    }
+
+    // 1) ha van contract_html, azt használjuk
+    // 2) különben a plain szövegből csinálunk HTML-t
+    const baseText = result.contract_html ?? result.contract_text;
+
+    const htmlSeed = `<p>${baseText
+      .split(/\n{2,}/)           // üres sor = új bekezdés
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join("</p><p>")}</p>`;
+
+    setEditorText(htmlSeed);
     setEditorOpen(true);
   }
+
 
   // Letöltés – ha textOverride meg van adva (modal), azt használja
   async function handleDownload(
@@ -336,21 +365,36 @@ export default function ContractGeneratePage() {
               {result && (
                 <>
                   <section className="space-y-2">
-                    <h2 className="font-semibold text-lg">
-                      Szerződés szövege
-                    </h2>
-                    <div className="relative">
+                    <div className="flex items-center justify-between">
+                      <h2 className="font-semibold text-lg">
+                        Szerződés szövege
+                      </h2>
+
                       <button
                         type="button"
                         onClick={openEditor}
-                        className="absolute top-2 right-2 rounded-full bg-slate-800/80 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700 hover:text-white transition"
+                        className="rounded-full bg-slate-800/80 p-2 text-slate-200 hover:bg-slate-700 hover:text-white transition"
                       >
-                        ✏️ <span className="sr-only">Szerződés szerkesztése</span>
+                        <Edit className="w-4 h-4" />
+                        <span className="sr-only">Szerződés szerkesztése</span>
                       </button>
-                      <div className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm whitespace-pre-wrap">
-                        {result.contract_text}
-                      </div>
                     </div>
+
+                    {/* <div className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm whitespace-pre-wrap"
+                    >
+                      {result.contract_text}
+                    </div> */}
+                    <div
+                      className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm"
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          editorText ||                // ha szerkesztett verzió van, azt mutatja
+                          result.contract_html ||      // ha van HTML verzió, azt mutatja
+                          result.contract_text.replace(/\n/g, "<br />"), // fallback: plain text → HTML
+                      }}
+                    />
+
+
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
@@ -406,14 +450,17 @@ export default function ContractGeneratePage() {
             <DialogHeader>
               <DialogTitle>Generált szerződés szerkesztése</DialogTitle>
             </DialogHeader>
+
             <div className="mt-4 space-y-4">
-              <Textarea
+
+              {/* TipTap editor itt */}
+              <ContractEditor
                 value={editorText}
-                onChange={(e) => setEditorText(e.target.value)}
-                rows={16}
-                className="w-full bg-slate-950/80 border border-slate-700 rounded-md text-sm text-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                onChange={(html) => setEditorText(html)}
               />
-              <div className="flex flex-wrap items-center justify-between gap-3">
+
+              {/* Gombok */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -425,6 +472,7 @@ export default function ContractGeneratePage() {
                       ? "PDF letöltése..."
                       : "PDF letöltése"}
                   </Button>
+
                   <Button
                     type="button"
                     onClick={() => handleDownload("docx", editorText)}
@@ -436,6 +484,7 @@ export default function ContractGeneratePage() {
                       : "Word (DOCX) letöltése"}
                   </Button>
                 </div>
+
                 <Button
                   type="button"
                   variant="outline"
@@ -445,15 +494,18 @@ export default function ContractGeneratePage() {
                   Bezárás
                 </Button>
               </div>
+
               {downloadError && (
-                <p className="text-xs text-red-400">
+                <p className="text-xs text-red-400 mt-1">
                   ❌ {downloadError}
                 </p>
               )}
+
             </div>
           </DialogContent>
         </Dialog>
       )}
+
     </main>
   );
 }
