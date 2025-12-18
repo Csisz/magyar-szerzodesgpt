@@ -25,7 +25,6 @@ const ContractEditor = dynamic(
   { ssr: false }
 );
 
-
 type GenerateResponse = {
   contract_text: string;
   summary_hu: string;
@@ -63,6 +62,8 @@ export default function ContractGeneratePage() {
   // Modal szerkesztő állapot
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
+  
+  const [finalContractHtml, setFinalContractHtml] = useState<string | null>(null);
 
   // Animált, váltakozó töltés-üzenetek
   useEffect(() => {
@@ -78,6 +79,35 @@ export default function ContractGeneratePage() {
 
     return () => clearInterval(timer);
   }, [loading]);
+
+
+  // Segédfüggvény: plain text → szebb HTML formázással
+  function formatContractTextToHTML(text: string): string {
+    if (!text) return "";
+
+    const lines = text.split("\n");
+
+    let html = "";
+    for (let line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        html += "<p></p>"; // üres sor
+        continue;
+      }
+
+      // Fejezetcímek felismerése ("1.", "1.1.", stb.)
+      if (/^\d+(\.\d+)*\./.test(trimmed)) {
+        html += `<h2 class="text-lg font-semibold mt-4 mb-2">${trimmed}</h2>`;
+        continue;
+      }
+
+      html += `<p>${trimmed}</p>`;
+    }
+
+    return html;
+  }
+
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -138,14 +168,68 @@ export default function ContractGeneratePage() {
     // 2) különben a plain szövegből csinálunk HTML-t
     const baseText = result.contract_html ?? result.contract_text;
 
-    const htmlSeed = `<p>${baseText
-      .split(/\n{2,}/)           // üres sor = új bekezdés
-      .map((p) => p.trim())
-      .filter(Boolean)
-      .join("</p><p>")}</p>`;
-
+    // const htmlSeed = `<p>${baseText
+    //   .split(/\n{2,}/)           // üres sor = új bekezdés
+    //   .map((p) => p.trim())
+    //   .filter(Boolean)
+    //   .join("</p><p>")}</p>`;
+    const htmlSeed = formatLegalTextToHtml(baseText);
     setEditorText(htmlSeed);
     setEditorOpen(true);
+
+  }
+
+  function formatLegalTextToHtml(text: string): string {
+    if (!text) return "";
+
+    let html = text;
+
+    // Fejezet címek (pl. "1. Preambulum")
+    html = html.replace(
+      /^(\d+\.\s+[A-ZÁÉÍÓÖŐÚÜŰa-záéíóöőúüű].*)$/gm,
+      "<h2>$1</h2>"
+    );
+
+    // Alcímek (pl. "1.1. Jelen szerződés...")
+    html = html.replace(
+      /^(\d+\.\d+\.\s+[A-ZÁÉÍÓÖŐÚÜŰa-záéíóöőúüű].*)$/gm,
+      "<h3>$1</h3>"
+    );
+
+    // Felsorolások – sima hyphen
+    html = html.replace(/^- (.*)$/gm, "<li>$1</li>");
+    html = html.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
+
+    // Számozott bekezdések
+    html = html.replace(/^(\d+\.\s.*)$/gm, "<p class='indent'>$1</p>");
+
+    // Dupla sortörés → új paragrafus
+    html = html.replace(/\n{2,}/g, "</p><p>");
+
+    // Egy sortörés → szóköz
+    // html = html.replace(/\n/g, " ");
+    // Üres sor = jól látható, megtartható paragrafus
+    html = html.replace(/\n{2,}/g, `<p class="empty-line">&nbsp;</p>`);
+
+
+    // Wrap full content
+    html = `<p>${html}</p>`;
+
+    return html;
+  }
+
+  function closeEditor() {
+    setEditorOpen(false);
+
+    // fontos → frissíti a fő nézet tartalmát az editor HTML-lel
+    setResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            contract_html: editorText, // ⬅ itt adjuk vissza a szerkesztett HTML-t
+          }
+        : prev
+    );
   }
 
 
@@ -385,14 +469,14 @@ export default function ContractGeneratePage() {
                       {result.contract_text}
                     </div> */}
                     <div
-                      className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm"
+                      className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm prose prose-invert"
                       dangerouslySetInnerHTML={{
-                        __html:
-                          editorText ||                // ha szerkesztett verzió van, azt mutatja
-                          result.contract_html ||      // ha van HTML verzió, azt mutatja
-                          result.contract_text.replace(/\n/g, "<br />"), // fallback: plain text → HTML
+                        __html: finalContractHtml || formatContractTextToHTML(result.contract_text)
                       }}
+
+
                     />
+
 
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -489,7 +573,12 @@ export default function ContractGeneratePage() {
                   type="button"
                   variant="outline"
                   className="border-slate-600 text-slate-100 hover:bg-slate-700"
-                  onClick={() => setEditorOpen(false)}
+                  // onClick={() => setEditorOpen(false)}
+                  onClick={() => {
+                    setFinalContractHtml(editorText);
+                    setEditorOpen(false);
+                  }}
+
                 >
                   Bezárás
                 </Button>

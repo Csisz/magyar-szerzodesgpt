@@ -73,3 +73,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+.empty-line {
+  height: 1.2em;
+  line-height: 1.2em;
+  margin: 0.5rem 0;
+}
