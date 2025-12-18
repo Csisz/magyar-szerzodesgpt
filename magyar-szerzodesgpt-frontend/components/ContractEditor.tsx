@@ -3,108 +3,221 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
-import Link from "@tiptap/extension-link";
 import TextAlign from "@tiptap/extension-text-align";
-import Paragraph from "@tiptap/extension-paragraph";
-import Bold from "@tiptap/extension-bold";
-import Italic from "@tiptap/extension-italic";
+import Placeholder from "@tiptap/extension-placeholder";
+
+import {
+  Bold,
+  Italic,
+  Underline as UnderlineIcon,
+  ListOrdered,
+  Heading1,
+  Heading2,
+  Heading3,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Undo,
+  Redo,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
-type Props = {
+type ContractEditorProps = {
   value: string;
   onChange: (html: string) => void;
 };
 
-export default function ContractEditor({ value, onChange }: Props) {
-  const editor = useEditor(
-    {
-      extensions: [
-        StarterKit.configure({
-            paragraph: false, // kikapcsoljuk a duplázódást
-        }),
-        Paragraph.configure({
-          HTMLAttributes: { class: "tiptap-block" },
-        }),
-        Underline,
-        Link,
-        TextAlign.configure({
-          types: ["heading", "paragraph"],
-        }),
-        Bold,
-        Italic,
-      ],
-      content: value || "<p></p>",
-      onUpdate: ({ editor }) => {
-        onChange(editor.getHTML());
-      },
-      immediatelyRender: false, // NEXT.JS REQUIREMENTS
-    },
-    [] // fontos!
-  );
+export default function ContractEditor({
+  value,
+  onChange,
+}: ContractEditorProps) {
+  const editor = useEditor({
+    immediatelyRender: false, // 👈 EZ A MEGOLDÁS
 
-  // Ha kívülről változik a value → frissítjük a modalt
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
+        },
+      }),
+      Underline,
+      TextAlign.configure({
+        types: ["heading", "paragraph"],
+      }),
+      Placeholder.configure({
+        placeholder: "Kezdd el szerkeszteni a szerződést…",
+      }),
+    ],
+    content: value,
+    editorProps: {
+      attributes: {
+        class:
+          "prose prose-invert max-w-none focus:outline-none min-h-[420px]",
+      },
+    },
+    onUpdate({ editor }) {
+      onChange(editor.getHTML());
+    },
+  });
+
+
+  // Ha kívülről változik a value (pl. első megnyitáskor)
   useEffect(() => {
     if (!editor) return;
-    if (value && value !== editor.getHTML()) {
-      editor.commands.setContent(value, { emitUpdate: false });
+    if (value && editor.getHTML() !== value) {
+      editor.commands.setContent(value);
     }
   }, [value, editor]);
 
   if (!editor) return null;
 
   return (
-    <div className="space-y-2">
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 bg-slate-800 p-2 rounded border border-slate-700">
-
-        <button
+    <div className="rounded-lg border border-slate-700 bg-slate-900">
+      {/* TOOLBAR */}
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-700 p-2">
+        <ToolbarButton
+          active={editor.isActive("bold")}
           onClick={() => editor.chain().focus().toggleBold().run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
         >
-          B
-        </button>
+          <Bold size={16} />
+        </ToolbarButton>
 
-        <button
+        <ToolbarButton
+          active={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
         >
-          I
-        </button>
+          <Italic size={16} />
+        </ToolbarButton>
 
-        <button
+        <ToolbarButton
+          active={editor.isActive("underline")}
           onClick={() => editor.chain().focus().toggleUnderline().run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
         >
-          U
-        </button>
+          <UnderlineIcon size={16} />
+        </ToolbarButton>
 
-        <button
-          onClick={() => editor.chain().focus().setTextAlign("left").run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
-        >
-          ⬅
-        </button>
+        <Separator />
 
-        <button
-          onClick={() => editor.chain().focus().setTextAlign("center").run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
+        <ToolbarButton
+          active={editor.isActive("heading", { level: 1 })}
+          onClick={() =>
+            editor.chain().focus().toggleHeading({ level: 1 }).run()
+          }
         >
-          ⬆
-        </button>
+          <Heading1 size={16} />
+        </ToolbarButton>
 
-        <button
-          onClick={() => editor.chain().focus().setTextAlign("right").run()}
-          className="px-2 py-1 bg-slate-700 rounded text-white"
+        <ToolbarButton
+          active={editor.isActive("heading", { level: 2 })}
+          onClick={() =>
+            editor.chain().focus().toggleHeading({ level: 2 }).run()
+          }
         >
-          ➡
-        </button>
+          <Heading2 size={16} />
+        </ToolbarButton>
+
+        <ToolbarButton
+          active={editor.isActive("heading", { level: 3 })}
+          onClick={() =>
+            editor.chain().focus().toggleHeading({ level: 3 }).run()
+          }
+        >
+          <Heading3 size={16} />
+        </ToolbarButton>
+
+        <Separator />
+
+        <ToolbarButton
+          active={editor.isActive("orderedList")}
+          onClick={() =>
+            editor.chain().focus().toggleOrderedList().run()
+          }
+        >
+          <ListOrdered size={16} />
+        </ToolbarButton>
+
+        <Separator />
+
+        <ToolbarButton
+          active={editor.isActive({ textAlign: "left" })}
+          onClick={() =>
+            editor.chain().focus().setTextAlign("left").run()
+          }
+        >
+          <AlignLeft size={16} />
+        </ToolbarButton>
+
+        <ToolbarButton
+          active={editor.isActive({ textAlign: "center" })}
+          onClick={() =>
+            editor.chain().focus().setTextAlign("center").run()
+          }
+        >
+          <AlignCenter size={16} />
+        </ToolbarButton>
+
+        <ToolbarButton
+          active={editor.isActive({ textAlign: "right" })}
+          onClick={() =>
+            editor.chain().focus().setTextAlign("right").run()
+          }
+        >
+          <AlignRight size={16} />
+        </ToolbarButton>
+
+        <Separator />
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().undo().run()}
+        >
+          <Undo size={16} />
+        </ToolbarButton>
+
+        <ToolbarButton
+          onClick={() => editor.chain().focus().redo().run()}
+        >
+          <Redo size={16} />
+        </ToolbarButton>
       </div>
 
-      {/* TipTap editor */}
-      <EditorContent
-        editor={editor}
-        className="min-h-[300px] max-h-[600px] overflow-auto bg-slate-900 border border-slate-700 rounded p-4 text-slate-100"
-      />
+      {/* EDITOR */}
+      <div className="p-4">
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
+}
+
+/* ====== KIS SEGÉD KOMPONENSEK ====== */
+
+function ToolbarButton({
+  children,
+  onClick,
+  active,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      onClick={onClick}
+      className={cn(
+        "h-8 w-8",
+        active && "bg-slate-700 text-white"
+      )}
+    >
+      {children}
+    </Button>
+  );
+}
+
+function Separator() {
+  return <div className="mx-1 h-5 w-px bg-slate-700" />;
 }

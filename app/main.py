@@ -3,8 +3,12 @@ from .database import Base, engine
 from . import models
 from .api.routes import ai, contracts
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.routes import contracts
+
 
 app = FastAPI(title="Magyar SzerződésGPT API")
+
+app.include_router(contracts.router)
 
 # táblák létrehozása
 Base.metadata.create_all(bind=engine)

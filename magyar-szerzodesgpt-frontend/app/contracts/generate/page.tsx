@@ -20,6 +20,15 @@ import dynamic from "next/dynamic";
 
 import { Edit } from "lucide-react";
 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+
 const ContractEditor = dynamic(
   () => import("@/components/ContractEditor"),
   { ssr: false }
@@ -62,8 +71,12 @@ export default function ContractGeneratePage() {
   // Modal szerkesztő állapot
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
+
+  const [contractType, setContractType] = useState("megbizasi");
+  const [generationMode, setGenerationMode] = useState<"fast" | "detailed">("fast");
+
   
-  const [finalContractHtml, setFinalContractHtml] = useState<string | null>(null);
+
 
   // Animált, váltakozó töltés-üzenetek
   useEffect(() => {
@@ -123,12 +136,15 @@ export default function ContractGeneratePage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type,
-          parties,
-          subject,
-          payment,
-          duration,
-          special_terms: specialTerms || null,
+          contract_type: contractType,
+          generation_mode: generationMode,
+          form_data: {
+            PARTIES: parties,
+            SUBJECT: subject,
+            PAYMENT: payment,
+            DURATION: duration,
+            SPECIAL_TERMS: specialTerms,
+          },
         }),
       });
 
@@ -158,26 +174,21 @@ export default function ContractGeneratePage() {
   function openEditor() {
     if (!result) return;
 
-    // Ha már volt szerkesztett HTML, azt használjuk tovább
+    // Ha már volt szerkesztve → azt nyitjuk meg
     if (editorText) {
       setEditorOpen(true);
       return;
     }
 
-    // 1) ha van contract_html, azt használjuk
-    // 2) különben a plain szövegből csinálunk HTML-t
-    const baseText = result.contract_html ?? result.contract_text;
+    // Első megnyitáskor: plain text → HTML
+    const htmlSeed = formatLegalTextToHtml(
+      result.contract_html ?? result.contract_text
+    );
 
-    // const htmlSeed = `<p>${baseText
-    //   .split(/\n{2,}/)           // üres sor = új bekezdés
-    //   .map((p) => p.trim())
-    //   .filter(Boolean)
-    //   .join("</p><p>")}</p>`;
-    const htmlSeed = formatLegalTextToHtml(baseText);
     setEditorText(htmlSeed);
     setEditorOpen(true);
-
   }
+
 
   function formatLegalTextToHtml(text: string): string {
     if (!text) return "";
@@ -344,7 +355,7 @@ export default function ContractGeneratePage() {
             </CardHeader>
             <CardContent>
               <form className="space-y-4" onSubmit={handleSubmit}>
-                <div className="space-y-1">
+                {/* <div className="space-y-1">                  
                   <Label htmlFor="type">Szerződés típusa</Label>
                   <Input
                     id="type"
@@ -352,7 +363,47 @@ export default function ContractGeneratePage() {
                     onChange={(e) => setType(e.target.value)}
                     placeholder="pl. Megbízási szerződés, Bérleti szerződés, Adásvételi szerződés"
                   />
+                </div> */}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                  {/* SZERZŐDÉS TÍPUS */}
+                  <div>
+                    <label className="text-sm text-slate-300 mb-1 block">
+                      Szerződés típusa
+                    </label>
+                    <Select value={contractType} onValueChange={setContractType}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Válassz szerződés típust" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="megbizasi">Megbízási szerződés</SelectItem>
+                        <SelectItem value="nda">Titoktartási megállapodás (NDA)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* GENERÁLÁSI MÓD */}
+                  <div>
+                    <label className="text-sm text-slate-300 mb-1 block">
+                      Generálás részletessége
+                    </label>
+                    <Select
+                      value={generationMode}
+                      onValueChange={(v) => setGenerationMode(v as "fast" | "detailed")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fast">⚡ Gyors (vázlatos)</SelectItem>
+                        <SelectItem value="detailed">🧠 Alapos (részletes)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                 </div>
+
 
                 <div className="space-y-1">
                   <Label htmlFor="parties">Felek rövid leírása</Label>
@@ -471,7 +522,7 @@ export default function ContractGeneratePage() {
                     <div
                       className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm prose prose-invert"
                       dangerouslySetInnerHTML={{
-                        __html: finalContractHtml || formatContractTextToHTML(result.contract_text)
+                        __html: editorText || formatContractTextToHTML(result.contract_text)
                       }}
 
 
@@ -530,67 +581,70 @@ export default function ContractGeneratePage() {
       {/* Szerkesztő modal – csak akkor, ha van eredmény */}
       {result && (
         <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-          <DialogContent className="max-w-4xl bg-slate-900 border border-slate-700 text-slate-50">
+          <DialogContent className="
+              max-w-4xl
+              max-h-[90vh]
+              flex flex-col
+              bg-slate-900
+              border border-slate-700
+              text-slate-50
+            ">
+
             <DialogHeader>
               <DialogTitle>Generált szerződés szerkesztése</DialogTitle>
             </DialogHeader>
 
-            <div className="mt-4 space-y-4">
+            <div className="flex-1 overflow-hidden flex flex-col mt-4">
 
-              {/* TipTap editor itt */}
-              <ContractEditor
-                value={editorText}
-                onChange={(html) => setEditorText(html)}
-              />
-
-              {/* Gombok */}
-              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    onClick={() => handleDownload("pdf", editorText)}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                    disabled={downloadFormat !== null}
-                  >
-                    {downloadFormat === "pdf"
-                      ? "PDF letöltése..."
-                      : "PDF letöltése"}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    onClick={() => handleDownload("docx", editorText)}
-                    className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                    disabled={downloadFormat !== null}
-                  >
-                    {downloadFormat === "docx"
-                      ? "Word (DOCX) letöltése..."
-                      : "Word (DOCX) letöltése"}
-                  </Button>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-slate-600 text-slate-100 hover:bg-slate-700"
-                  // onClick={() => setEditorOpen(false)}
-                  onClick={() => {
-                    setFinalContractHtml(editorText);
-                    setEditorOpen(false);
-                  }}
-
-                >
-                  Bezárás
-                </Button>
+              {/* SCROLLOZHATÓ EDITOR */}
+              <div className="flex-1 overflow-auto pr-2">
+                <ContractEditor
+                  value={editorText}
+                  onChange={(html) => setEditorText(html)}
+                />
               </div>
 
-              {downloadError && (
-                <p className="text-xs text-red-400 mt-1">
-                  ❌ {downloadError}
-                </p>
-              )}
+              {/* FIX LÁBLÉC */}
+              <div className="sticky bottom-0 bg-slate-900 border-t border-slate-700 pt-3 mt-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={() => handleDownload("pdf", editorText)}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                    >
+                      PDF letöltése
+                    </Button>
+
+                    <Button
+                      type="button"
+                      onClick={() => handleDownload("docx", editorText)}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                    >
+                      Word (DOCX) letöltése
+                    </Button>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="bg-slate-700 text-slate-100 hover:bg-slate-600"
+                    onClick={() => setEditorOpen(false)}
+                  >
+                    Bezárás
+                  </Button>
+
+                </div>
+
+                {downloadError && (
+                  <p className="text-xs text-red-400 mt-2">
+                    ❌ {downloadError}
+                  </p>
+                )}
+              </div>
 
             </div>
+
           </DialogContent>
         </Dialog>
       )}

@@ -1,23 +1,37 @@
-from typing import List
+from typing import List, Dict
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    UploadFile,
+    File,
+    HTTPException,
+    Response,
+)
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from ... import models, schemas
 from ..deps import get_db
+
+# 🔹 Régi OpenAI-alapú szolgáltatások (review, improve, stb.)
 from ...services.openai_service import (
-    generate_contract,
     analyze_contract,
     apply_suggestions,
     ai_improve_contract,
 )
+
+# 🔹 ÚJ: template-alapú szerződés generátor
+from app.services.contract_generator import generate_contract as generate_contract_from_template
+
+# 🔹 File extract
 from ...services.file_extract_service import (
     extract_text_from_pdf,
     extract_text_from_docx,
     extract_text_from_txt,
 )
 
-# from app.services.export_service import create_export_file_from_template
+# 🔹 Export
 from app.services.export_service import create_export_file
 
 
@@ -26,6 +40,19 @@ router = APIRouter(
     tags=["Contracts"],
 )
 
+# ============================================================
+# REQUEST MODEL – TEMPLATE-ALAPÚ GENERÁLÁSHOZ
+# ============================================================
+
+class ContractGenerateTemplateRequest(BaseModel):
+    contract_type: str            # "megbizasi", "nda"
+    generation_mode: str          # "fast" | "detailed"
+    form_data: Dict[str, str]     # {{PLACEHOLDER}} → érték
+
+
+# ============================================================
+# MANUÁLIS CONTRACT CRUD
+# ============================================================
 
 @router.post("/", response_model=schemas.ContractRead)
 def create_contract(
@@ -50,25 +77,47 @@ def list_contracts(db: Session = Depends(get_db)):
     """
     Összes elmentett szerződés listázása.
     """
-    contracts = db.query(models.Contract).all()
-    return contracts
+    return db.query(models.Contract).all()
 
+
+# ============================================================
+# 🧠 TEMPLATE-ALAPÚ SZERZŐDÉSGENERÁLÁS (FAST / DETAILED)
+# ============================================================
 
 @router.post("/generate", response_model=schemas.ContractGenerateResponse)
 def generate_contract_endpoint(
-    request: schemas.ContractGenerateRequest,
+    request: ContractGenerateTemplateRequest,
 ):
     """
-    Szerződéstervezet generálása OpenAI segítségével.
+    Template-alapú szerződéstervezet generálása (fast / detailed).
     """
-    contract_text, summary_hu = generate_contract(request)
+    try:
+        result = generate_contract_from_template(
+            contract_type=request.contract_type,
+            mode=request.generation_mode,
+            form_data=request.form_data,
+        )
 
-    return schemas.ContractGenerateResponse(
-        contract_text=contract_text,
-        summary_hu=summary_hu,
-        summary_en=None,
-    )
+        return schemas.ContractGenerateResponse(
+            contract_text=result["contract_html"],
+            summary_hu=result["summary_hu"],
+            summary_en=None,
+        )
 
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Szerződés generálása közben hiba történt: {e}",
+        )
+
+
+# ============================================================
+# 🔍 AI-ALAPÚ REVIEW
+# ============================================================
 
 @router.post("/review", response_model=schemas.ContractReviewResponse)
 def review_contract_endpoint(
@@ -76,13 +125,16 @@ def review_contract_endpoint(
 ):
     """
     AI-alapú szerződés review:
-    - összefoglaló,
-    - max 5 kockázatos pont,
-    - általános kockázati szint.
+    - összefoglaló
+    - max 5 kockázatos pont
+    - általános kockázati szint
     """
-    review = analyze_contract(request)
-    return review
+    return analyze_contract(request)
 
+
+# ============================================================
+# ✏️ JAVASLATOK ALKALMAZÁSA
+# ============================================================
 
 @router.post(
     "/apply-suggestions",
@@ -92,16 +144,20 @@ def apply_suggestions_endpoint(
     request: schemas.ContractApplySuggestionsRequest,
 ):
     """
-    Az eredeti szerződéshez a kiválasztott javaslatok beépítése.
-    Visszaadja a módosított szerződés szövegét és egy rövid változás-összefoglalót.
+    A kiválasztott AI-javaslatok beépítése a szerződésbe.
     """
-    result = apply_suggestions(request)
-    return result
+    return apply_suggestions(request)
 
+
+# ============================================================
+# 📄 SZÖVEGKINYERÉS FELTÖLTÖTT FILE-BÓL
+# ============================================================
 
 @router.post("/extract-text", response_model=schemas.ContractExtractResponse)
 async def extract_contract_text(file: UploadFile = File(...)):
-    """PDF / DOCX / TXT szerződésből szöveget nyer ki."""
+    """
+    PDF / DOCX / TXT szerződésből szöveget nyer ki.
+    """
     filename = file.filename or ""
     lower_name = filename.lower()
 
@@ -111,8 +167,6 @@ async def extract_contract_text(file: UploadFile = File(...)):
         elif lower_name.endswith(".docx"):
             text = extract_text_from_docx(file.file)
         elif lower_name.endswith(".txt") or lower_name.endswith(".doc"):
-            # .doc esetére legegyszerűbb, ha előbb átkonvertálják docx-re,
-            # itt most txt-szintű fallbacket adunk
             text = extract_text_from_txt(file.file)
         else:
             raise HTTPException(
@@ -134,29 +188,35 @@ async def extract_contract_text(file: UploadFile = File(...)):
     return schemas.ContractExtractResponse(text=text)
 
 
+# ============================================================
+# 🛠️ SZERZŐDÉS JAVÍTÁSA (AI IMPROVE)
+# ============================================================
+
 @router.post("/improve", response_model=schemas.ContractImproveResponse)
 async def improve_contract_endpoint(
     req: schemas.ContractImproveRequest,
 ):
     """
-    Meglévő szerződés javított / kiegyensúlyozottabb változatát adja vissza AI segítségével.
+    Meglévő szerződés javított / kiegyensúlyozottabb változata AI segítségével.
     """
     try:
-        result = ai_improve_contract(req)
-        return result
+        return ai_improve_contract(req)
     except Exception as e:
-        # fejlesztéshez jó, élesben persze finomabban loggolnánk
         raise HTTPException(
             status_code=500,
             detail=f"Nem sikerült a szerződés javítása: {e}",
         )
+
+
+# ============================================================
+# 📦 EXPORT (PDF / DOCX)
+# ============================================================
 
 @router.post("/export")
 async def export_contract(
     req: schemas.ContractExportRequest,
 ):
     try:
-        # Ezek MENNEK a meta-ba, mert create_export_file ezt várja
         meta = {
             "document_title": req.document_title or "Szerződés",
             "document_date": req.document_date or "",
@@ -168,12 +228,11 @@ async def export_contract(
                 or "A dokumentum automatikusan generált, és nem minősül jogi tanácsadásnak.",
         }
 
-        # ⬅ A helyes hívás (NINCS layout_vars, NINCS output_format)
         filename, content, mime_type = create_export_file(
             template_name=req.template_name,
             template_vars=req.template_vars or {},
-            format=req.format,     # ezt várja a függvény
-            meta=meta,             # layout_vars → meta
+            format=req.format,
+            meta=meta,
         )
 
         headers = {

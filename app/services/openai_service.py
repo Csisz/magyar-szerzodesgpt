@@ -377,3 +377,32 @@ def ai_improve_contract(
         improved_text=improved_text.strip(),
         summary_hu=None,
     )
+
+# ---------------------------------------------------------
+#  KÖZÖS, ALACSONY SZINTŰ OPENAI HÍVÁS
+#  (template-alapú generáláshoz)
+# ---------------------------------------------------------
+def call_openai(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    temperature: float = 0.2,
+) -> dict:
+    """
+    Egységes OpenAI-hívás egyszerű szöveggeneráláshoz.
+    Visszatér: { "content": "..." }
+    """
+    client = get_client()
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+    )
+
+    return {
+        "content": response.choices[0].message.content or ""
+    }
