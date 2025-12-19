@@ -88,9 +88,6 @@ def list_contracts(db: Session = Depends(get_db)):
 def generate_contract_endpoint(
     request: ContractGenerateTemplateRequest,
 ):
-    """
-    Template-alapú szerződéstervezet generálása (fast / detailed).
-    """
     try:
         result = generate_contract_from_template(
             contract_type=request.contract_type,
@@ -98,23 +95,31 @@ def generate_contract_endpoint(
             form_data=request.form_data,
         )
 
+        # ⛑️ KRITIKUS VÉDELEM
+        if not isinstance(result, dict):
+            raise ValueError("A szerződésgenerátor nem várt formátumban tért vissza.")
+
+        if "contract_html" not in result:
+            raise ValueError("Hiányzik a generált szerződés szövege.")
+
         return schemas.ContractGenerateResponse(
             contract_text=result["contract_html"],
-            summary_hu=result["summary_hu"],
+            summary_hu=result.get("summary_hu", ""),
             summary_en=None,
             telemetry=result.get("telemetry"),
         )
 
+    except (FileNotFoundError, ValueError) as e:
+        # 🔴 FONTOS: EZ JSON-T KÜLD VISSZA
+        raise HTTPException(status_code=400, detail=str(e))
 
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        # 🔴 EZ IS JSON
         raise HTTPException(
             status_code=500,
             detail=f"Szerződés generálása közben hiba történt: {e}",
         )
+
 
 
 # ============================================================

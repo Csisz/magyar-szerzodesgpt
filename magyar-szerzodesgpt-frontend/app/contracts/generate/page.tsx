@@ -159,12 +159,20 @@ export default function ContractGeneratePage() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        const msg =
-          errData?.detail ||
-          `Hiba a backend hívás közben: HTTP ${res.status}`;
+        let msg = `Hiba a backend hívás közben: HTTP ${res.status}`;
+
+        try {
+          const errData = await res.json();
+          if (errData?.detail) {
+            msg = errData.detail;
+          }
+        } catch {
+          // backend nem JSON-t küldött → ez OK
+        }
+
         throw new Error(msg);
       }
+
 
       const data = (await res.json()) as GenerateResponse;
       setResult(data);

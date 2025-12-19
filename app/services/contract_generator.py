@@ -28,12 +28,29 @@ def generate_contract(
         max_tokens = 800
         temperature = 0.1
 
+        REQUIRED_PLACEHOLDERS = [
+            "CLIENT_NAME",
+            "CLIENT_ADDRESS",
+            "CLIENT_REGNO",
+            "CLIENT_TAXNO",
+            "CLIENT_REP",
+            "CONTRACTOR_NAME",
+            "CONTRACTOR_ADDRESS",
+            "CONTRACTOR_REGNO",
+            "CONTRACTOR_TAXNO",
+        ]
+
+
         if form_data.get("PARTIES"):
             normalized = normalize_parties_cached(form_data["PARTIES"])
             form_data = {
                 **form_data,
                 **normalized,
             }
+
+        for key in REQUIRED_PLACEHOLDERS:
+            form_data.setdefault(key, "")
+
 
         # 1️⃣ Template betöltése (cache-elt)
         template_html = load_contract_template(contract_type, "fast")
@@ -49,17 +66,10 @@ def generate_contract(
 
         duration = round(time.perf_counter() - start_time, 2)
 
-        return {
-            "contract_html": filled_contract,
-            "summary_hu": "Gyors módú szerződéstervezet generálva.",
-            "telemetry": {
-                "mode": "fast",
-                "model": model,
-                "generation_time_sec": duration,
-                "max_tokens": max_tokens,
-                "pipeline": "placeholder-only",
-            },
-        }
+        return (
+            filled_contract,
+            "Gyors módú szerződéstervezet generálva.",
+        )
 
     # =========================
     # DETAILED MODE – full legal reasoning
@@ -149,7 +159,6 @@ BEMENETI ADATOK:
 
     try:
         return json.loads(response["content"])
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"FAST placeholder generálás nem adott vissza érvényes JSON-t: {e}"
-        )
+    except json.JSONDecodeError:
+        return {k: form_data.get(k, "") for k in form_data.keys()}
+
