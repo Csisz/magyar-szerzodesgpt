@@ -1,13 +1,12 @@
 import time
 import json
 
-from app.utils.template_loader import (
-    load_contract_template,
-    fill_template_with_placeholders,
-)
+import time
+from app.utils.template_loader import load_contract_template
+from app.services.party_normalizer import normalize_parties_cached
 from app.services.prompt_builder import build_contract_prompt
 from app.services.openai_service import call_openai
-from app.services.party_normalizer import normalize_parties_cached
+
 
 def generate_contract(
     contract_type: str,
@@ -16,13 +15,24 @@ def generate_contract(
 ):
     """
     Szerződés generálása FAST vagy DETAILED módban.
+    VISSZATÉRÉS: dict
+    {
+        contract_html: str,
+        summary_hu: str,
+        telemetry: dict
+    }
     """
 
     start_time = time.perf_counter()
 
-    # =========================
-    # FAST MODE – placeholder-only
-    # =========================
+    # 🔒 DEFENZÍV DEFAULTOK – SOHA NEM LEHET NONE
+    contract_html = ""
+    summary_hu = ""
+    telemetry = {}
+
+    # ==================================================
+    # ⚡ FAST MODE – sablon + placeholder kitöltés
+    # ==================================================
     if mode == "fast":
         model = "gpt-4o-mini"
         max_tokens = 800
@@ -40,86 +50,90 @@ def generate_contract(
             "CONTRACTOR_TAXNO",
         ]
 
-
+        # 1️⃣ Felek normalizálása (cache-elt, FAST-safe)
         if form_data.get("PARTIES"):
             normalized = normalize_parties_cached(form_data["PARTIES"])
-            form_data = {
-                **form_data,
-                **normalized,
-            }
+            form_data = {**form_data, **normalized}
 
+        # 2️⃣ Kötelező placeholder kulcsok biztosítása
         for key in REQUIRED_PLACEHOLDERS:
             form_data.setdefault(key, "")
 
-
-        # 1️⃣ Template betöltése (cache-elt)
+        # 3️⃣ Template betöltése
         template_html = load_contract_template(contract_type, "fast")
 
-        # 2️⃣ Placeholder értékek generálása AI-val
+        # 4️⃣ Placeholder értékek generálása
         placeholder_values = generate_placeholders_fast(form_data)
 
-        # 3️⃣ Lokális behelyettesítés
-        filled_contract = fill_template_with_placeholders(
+        # 5️⃣ Lokális behelyettesítés (NINCS AI itt)
+        contract_html = fill_template_with_placeholders(
             template_html,
             placeholder_values,
         )
 
         duration = round(time.perf_counter() - start_time, 2)
 
-        return (
-            filled_contract,
-            "Gyors módú szerződéstervezet generálva.",
-        )
+        telemetry = {
+            "mode": "fast",
+            "model": model,
+            "duration_sec": duration,
+            "max_tokens": max_tokens,
+        }
 
-    # =========================
-    # DETAILED MODE – full legal reasoning
-    # =========================
+        return {
+            "contract_html": contract_html,
+            "summary_hu": "Gyors módú szerződéstervezet generálva.",
+            "telemetry": telemetry,
+        }
+
+    # ==================================================
+    # 🧠 DETAILED MODE – teljes AI generálás
+    # ==================================================
     else:
         model = "gpt-4o"
         max_tokens = 3500
         temperature = 0.3
 
-        system_prompt = (
-            "Te egy magyar jogra specializált ügyvéd vagy, "
-            "aki szerződéstervezeteket készít és felülvizsgál. "
-            "Vizsgáld át a teljes szerződésszöveget, és jogilag pontos, "
-            "kiegyensúlyozott, részletes megfogalmazást alkalmazz "
-            "a magyar jog (különösen a Ptk.) alapján. "
-            "A szerződés szerkezetét tartsd meg, de a szöveget "
-            "indokolt esetben pontosíthatod vagy finoman bővítheted."
-        )
-
-        # 1️⃣ Template betöltés
+        # 1️⃣ Template betöltése
         template_html = load_contract_template(contract_type, "detailed")
 
-        # 2️⃣ Prompt felépítése (EZ HIÁNYZOTT KORÁBBAN)
+        # 2️⃣ Prompt építése
         prompt = build_contract_prompt(
             template_html=template_html,
             form_data=form_data,
-            mode="detailed",
+            mode=mode,
         )
 
         # 3️⃣ OpenAI hívás
         response = call_openai(
             model=model,
-            system_prompt=system_prompt,
+            system_prompt=(
+                "Te egy magyar jogra specializált szerződésgenerátor vagy. "
+                "Feladatod egy részletes, kiegyensúlyozott, magyar jog szerint "
+                "strukturált szerződéstervezet elkészítése."
+            ),
             user_prompt=prompt,
             temperature=temperature,
             max_tokens=max_tokens,
         )
 
+        contract_html = response.get("content", "")
+
         duration = round(time.perf_counter() - start_time, 2)
 
-        return {
-            "contract_html": response["content"],
-            "summary_hu": "Részletes szerződéstervezet generálva.",
-            "telemetry": {
-                "mode": "detailed",
-                "model": model,
-                "generation_time_sec": duration,
-                "max_tokens": max_tokens,
-            },
+        telemetry = {
+            "mode": "detailed",
+            "model": model,
+            "duration_sec": duration,
+            "max_tokens": max_tokens,
         }
+
+        return {
+            "contract_html": contract_html,
+            "summary_hu": "Részletes szerződéstervezet generálva.",
+            "telemetry": telemetry,
+        }
+
 
 
 def generate_placeholders_fast(form_data: dict) -> dict:
