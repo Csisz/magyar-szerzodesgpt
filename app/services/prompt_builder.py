@@ -3,26 +3,33 @@ def build_contract_prompt(
     form_data: dict,
     mode: str,
 ) -> str:
-    mode_instruction = (
-        "Tömör, lényegre törő megfogalmazást használj."
-        if mode == "fast"
-        else
-        "Részletes, jogilag körültekintő megfogalmazást használj."
-    )
+
+    if mode == "fast":
+        mode_instruction = """
+FAST MÓD:
+- Csak töltsd ki a sablont
+- Ne adj hozzá új bekezdést
+- Ne magyarázz
+- Ne bővíts
+- Rövid, tömör jogi megfogalmazás
+"""
+    else:
+        mode_instruction = """
+DETAILED MÓD:
+- Jogilag részletesebb megfogalmazás
+- Pontosabb definíciók
+- Teljesebb klauzulák
+"""
 
     return f"""
 {mode_instruction}
 
-Feladat:
-Az alábbi magyar jog szerinti szerződés sablont töltsd ki a megadott adatokkal.
-
 SZABÁLYOK:
 - A HTML struktúrát NE változtasd meg
 - Csak a {{PLACEHOLDER}} mezőket töltsd ki
-- Ha egy adat hiányzik, hagyd üresen (__________)
-- Ne adj hozzá új fejezeteket
+- Hiányzó adat esetén hagyd: __________
 
-SABLON:
+HTML SABLON:
 {template_html}
 
 ADATOK:

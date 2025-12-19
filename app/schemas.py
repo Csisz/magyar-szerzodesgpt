@@ -35,6 +35,7 @@ class ContractGenerateResponse(BaseModel):
     contract_text: str           # formális jogi szöveg
     summary_hu: str              # laikus, magyar összefoglaló
     summary_en: Optional[str] = None   # opcionális angol összefoglaló
+    telemetry: dict | None = None
 
 
 # ---- AI-s endpointokhoz használt modellek: REVIEW ----

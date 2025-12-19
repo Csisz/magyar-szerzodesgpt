@@ -102,7 +102,9 @@ def generate_contract_endpoint(
             contract_text=result["contract_html"],
             summary_hu=result["summary_hu"],
             summary_en=None,
+            telemetry=result.get("telemetry"),
         )
+
 
     except FileNotFoundError as e:
         raise HTTPException(status_code=400, detail=str(e))

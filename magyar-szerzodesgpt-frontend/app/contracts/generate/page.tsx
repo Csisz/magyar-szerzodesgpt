@@ -34,12 +34,22 @@ const ContractEditor = dynamic(
   { ssr: false }
 );
 
+type Telemetry = {
+  mode: "fast" | "detailed";
+  model: string;
+  generation_time_sec: number;
+  max_tokens: number;
+};
+
 type GenerateResponse = {
   contract_text: string;
   summary_hu: string;
   summary_en?: string | null;
   contract_html?: string;
+  telemetry?: Telemetry;
 };
+
+
 
 const LOADING_MESSAGES = [
   "Alapadatok elemzése…",
@@ -56,24 +66,21 @@ export default function ContractGeneratePage() {
   const [payment, setPayment] = useState("");
   const [duration, setDuration] = useState("");
   const [specialTerms, setSpecialTerms] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
-
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
-
-  const [downloadFormat, setDownloadFormat] = useState<"pdf" | "docx" | null>(
-    null
-  );
+  const [downloadFormat, setDownloadFormat] = useState<"pdf" | "docx" | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-
-  // Modal szerkesztő állapot
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
-
   const [contractType, setContractType] = useState("megbizasi");
   const [generationMode, setGenerationMode] = useState<"fast" | "detailed">("fast");
+  const [telemetry, setTelemetry] = useState<any | null>(null);
+  const [contractDate, setContractDate] = useState<string>("");
+  const [contractPlace, setContractPlace] = useState<string>("");
+
+
 
   
 
@@ -139,6 +146,9 @@ export default function ContractGeneratePage() {
           contract_type: contractType,
           generation_mode: generationMode,
           form_data: {
+            DATE: contractDate || "",
+            PLACE: contractPlace || "",
+
             PARTIES: parties,
             SUBJECT: subject,
             PAYMENT: payment,
@@ -158,6 +168,7 @@ export default function ContractGeneratePage() {
 
       const data = (await res.json()) as GenerateResponse;
       setResult(data);
+      setTelemetry(data.telemetry ?? null);
       setDownloadError(null);
     } catch (err: any) {
       console.error(err);
@@ -347,6 +358,8 @@ export default function ContractGeneratePage() {
           </p>
         </header>
 
+
+
         <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)]">
           {/* BAL OLDAL: űrlap */}
           <Card className="bg-slate-800/90 border-slate-700">
@@ -474,6 +487,16 @@ export default function ContractGeneratePage() {
                     ? "Generálás folyamatban..."
                     : "Szerződés generálása"}
                 </Button>
+
+                {process.env.NODE_ENV === "development" && telemetry && (
+                  <div className="mt-2 text-xs text-slate-400">
+                    ⚡ {telemetry.mode.toUpperCase()} ·
+                    {telemetry.model} ·
+                    {telemetry.generation_time_sec}s ·
+                    max_tokens={telemetry.max_tokens}
+                  </div>
+                )}
+
               </form>
             </CardContent>
           </Card>

@@ -14,3 +14,22 @@ def load_contract_template(contract_type: str, mode: str) -> str:
         raise FileNotFoundError(f"Template nem található: {filename}")
 
     return template_path.read_text(encoding="utf-8")
+
+def fill_template_with_placeholders(template_html: str, values: dict) -> str:
+    """
+    Lokálisan behelyettesíti a {{PLACEHOLDER}} mezőket.
+    Ha nincs érték → üres kitöltő vonalat tesz be.
+    """
+    result = template_html
+
+    for key in values:
+        placeholder = f"{{{{{key}}}}}"
+        value = values.get(key)
+
+        if value is None or str(value).strip() == "":
+            value = "__________________________"
+
+        result = result.replace(placeholder, str(value))
+
+    return result
+

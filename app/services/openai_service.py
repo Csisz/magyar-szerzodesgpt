@@ -387,11 +387,8 @@ def call_openai(
     system_prompt: str,
     user_prompt: str,
     temperature: float = 0.2,
-) -> dict:
-    """
-    Egységes OpenAI-hívás egyszerű szöveggeneráláshoz.
-    Visszatér: { "content": "..." }
-    """
+    max_tokens: int | None = None,
+):
     client = get_client()
 
     response = client.chat.completions.create(
@@ -401,8 +398,10 @@ def call_openai(
             {"role": "user", "content": user_prompt},
         ],
         temperature=temperature,
+        max_tokens=max_tokens,   # ⬅️ EZ AZ ÚJ RÉSZ
     )
 
     return {
         "content": response.choices[0].message.content or ""
     }
+
