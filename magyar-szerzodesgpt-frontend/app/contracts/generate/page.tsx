@@ -130,6 +130,11 @@ export default function ContractGeneratePage() {
 
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    console.log("➡️ GENERATE REQUEST:", {
+      contractType,
+      generationMode,
+    });
+    
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -158,7 +163,7 @@ export default function ContractGeneratePage() {
         }),
       });
 
-      if (!res.ok) {
+    if (!res.ok) {
         let msg = `Hiba a backend hívás közben: HTTP ${res.status}`;
 
         try {
@@ -166,16 +171,35 @@ export default function ContractGeneratePage() {
           if (errData?.detail) {
             msg = errData.detail;
           }
-        } catch {
-          // backend nem JSON-t küldött → ez OK
-        }
+        } catch {}
 
-        throw new Error(msg);
+        setError(msg);   // ✅ UI-ban megjelenik
+        setLoading(false);
+        return;          // ✅ NINCS throw → nincs piros overlay
       }
 
 
-      const data = (await res.json()) as GenerateResponse;
+
+      const text = await res.text();
+
+      if (!text || !text.trim()) {
+        throw new Error("A backend üres választ adott vissza.");
+      }
+
+      let data: GenerateResponse;
+
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.error("Nem JSON válasz a backendtől:", text);
+        throw new Error("A backend válasza nem feldolgozható (nem JSON).");
+      }
+
+      console.log("✅ GENERATE RESPONSE:", data);
+
       setResult(data);
+      setTelemetry(data.telemetry ?? null);
+
       setTelemetry(data.telemetry ?? null);
       setDownloadError(null);
     } catch (err: any) {

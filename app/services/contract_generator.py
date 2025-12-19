@@ -6,7 +6,9 @@ from app.utils.template_loader import load_contract_template
 from app.services.party_normalizer import normalize_parties_cached
 from app.services.prompt_builder import build_contract_prompt
 from app.services.openai_service import call_openai
+from app.utils.template_loader import fill_template_with_placeholders
 
+print("🔥 LOADED contract_generator.py FROM:", __file__)
 
 def generate_contract(
     contract_type: str,
@@ -137,27 +139,30 @@ def generate_contract(
 
 
 def generate_placeholders_fast(form_data: dict) -> dict:
+
+    print("🔥 generate_placeholders_fast() CALLED")
+
     """
     FAST mód: kizárólag a placeholder értékeket generálja ki JSON-ben.
     """
 
     prompt = f"""
-SZIGORÚ FAST MÓD.
+        SZIGORÚ FAST MÓD.
 
-KIZÁRÓLAG érvényes JSON objektumot adhatsz vissza.
-NEM adhatsz magyarázatot.
-NEM használhatsz markdownot.
-NEM adhatsz hozzá új mezőket.
+        KIZÁRÓLAG érvényes JSON objektumot adhatsz vissza.
+        NEM adhatsz magyarázatot.
+        NEM használhatsz markdownot.
+        NEM adhatsz hozzá új mezőket.
 
-A kulcsok pontosan ezek legyenek:
-{list(form_data.keys())}
+        A kulcsok pontosan ezek legyenek:
+        {list(form_data.keys())}
 
-Feladat:
-Töltsd ki a fenti mezőket rövid, jogilag korrekt magyar szöveggel.
+        Feladat:
+        Töltsd ki a fenti mezőket rövid, jogilag korrekt magyar szöveggel.
 
-BEMENETI ADATOK:
-{form_data}
-"""
+        BEMENETI ADATOK:
+        {form_data}
+        """
 
     response = call_openai(
         model="gpt-4o-mini",
@@ -171,8 +176,21 @@ BEMENETI ADATOK:
         max_tokens=800,
     )
 
-    try:
-        return json.loads(response["content"])
-    except json.JSONDecodeError:
+    raw = response.get("content", "")
+
+    # ✅ FAST FALLBACK – SOHA NE DOBJON 400-AT
+    if not raw or not raw.strip():
+        # visszatérés a meglévő form adatokkal
         return {k: form_data.get(k, "") for k in form_data.keys()}
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # ha nem JSON, szintén fallback
+        print("🔥 FAST FALLBACK EXECUTED")
+
+        return {k: form_data.get(k, "") for k in form_data.keys()}
+
+
+
 
