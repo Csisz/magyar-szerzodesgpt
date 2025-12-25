@@ -110,8 +110,24 @@ def generate_contract_endpoint(
         )
 
     except (FileNotFoundError, ValueError) as e:
-        # 🔴 FONTOS: EZ JSON-T KÜLD VISSZA
+        if request.generation_mode == "fast":
+            return schemas.ContractGenerateResponse(
+                contract_text="",
+                summary_hu=(
+                    "Gyors módban nem sikerült automatikusan feldolgozni "
+                    "a megadott adatokat. A szerződés sablon alapú volt. "
+                    "Részletesebb eredményhez válaszd az „Alapos” módot."
+                ),
+                summary_en=None,
+                telemetry={
+                    "mode": "fast",
+                    "fallback": True,
+                    "internal_error": str(e),  # ⬅️ logolásra marad
+                },
+            )
+
         raise HTTPException(status_code=400, detail=str(e))
+
 
     except Exception as e:
         # 🔴 EZ IS JSON

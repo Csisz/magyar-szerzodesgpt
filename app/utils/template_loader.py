@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 BASE_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "contracts"
@@ -32,4 +33,13 @@ def fill_template_with_placeholders(template_html: str, values: dict) -> str:
         result = result.replace(placeholder, str(value))
 
     return result
+
+PLACEHOLDER_PATTERN = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
+
+def extract_placeholders(template_html: str) -> list[str]:
+    """
+    Kinyeri a {{PLACEHOLDER}} formátumú változókat a template-ből.
+    """
+    return list(set(PLACEHOLDER_PATTERN.findall(template_html)))
+
 

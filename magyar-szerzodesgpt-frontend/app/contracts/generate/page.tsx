@@ -130,13 +130,16 @@ export default function ContractGeneratePage() {
 
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    if (loading) return;
+      setLoading(true);
+
     console.log("➡️ GENERATE REQUEST:", {
       contractType,
       generationMode,
     });
-    
-    e.preventDefault();
-    setLoading(true);
+
     setError(null);
     setResult(null);
     setDownloadError(null);
@@ -368,6 +371,12 @@ export default function ContractGeneratePage() {
     }
   }
 
+  const safeContractText =
+    result?.contract_text && result.contract_text.trim()
+      ? result.contract_text
+      : "⚠️ Gyors módban nem állt rendelkezésre teljes szerződésszöveg. Próbáld az „Alapos” generálást.";
+  
+
   return (
     <main className="min-h-screen bg-slate-900 text-slate-50 px-4 py-8">
       {/* Teljes képernyős loading overlay */}
@@ -574,11 +583,13 @@ export default function ContractGeneratePage() {
                     >
                       {result.contract_text}
                     </div> */}
+
                     <div
                       className="bg-slate-900/70 rounded-md p-3 max-h-[320px] overflow-auto text-sm prose prose-invert"
                       dangerouslySetInnerHTML={{
-                        __html: editorText || formatContractTextToHTML(result.contract_text)
+                        __html: editorText || formatContractTextToHTML(safeContractText)
                       }}
+
 
 
                     />
